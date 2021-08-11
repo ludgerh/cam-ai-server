@@ -1,0 +1,351 @@
+{% extends 'main/basis.html' %}
+{% block content %}
+{% if debug %}
+  {% load static %}
+	<link rel="stylesheet" href="{% static 'git/c_client/c_client.css' %}">
+{% else %}
+	<link rel="stylesheet" href="https://static.cam-ai.de/c_client/c_client.css">
+{% endif %}
+
+<script>
+
+let ws_scheme = window.location.protocol == "https:" ? "wss:" : "ws:";
+let r_array = {};
+let trigger_Socket;
+let c_view_Socket;
+let oneitemSocket;
+{% if mode == "E" %}
+let TrDBUtilSocket;
+let taglines;
+let c_dict;
+let all_initialized = false;
+{% endif %}
+
+$(document).ready(function() {
+	{% if mode == "C" %}
+	$('#ch_show').change((evt) => {
+		oneitemSocket.sendandwait({
+			'command' : 'setcbstatus',
+			'ch_show' : $('#ch_show').prop('checked'),
+		})
+		.catch(err => {console.log(err);});
+	});
+
+	$('#ch_apply').change((evt) => {
+		oneitemSocket.sendandwait({
+			'command' : 'setcbstatus',
+			'ch_apply' : $('#ch_apply').prop('checked'),
+		})
+		.catch(err => {console.log(err);});
+	});
+
+	$('#ch_edit').change((evt) => {
+		oneitemSocket.sendandwait({
+			'command' : 'setcbstatus',
+			'ch_edit' : $('#ch_edit').prop('checked'),
+		})
+		.catch(err => {console.log(err);});
+	});
+
+	$('#ch_white').change((evt) => {
+		oneitemSocket.sendandwait({
+			'command' : 'setcbstatus',
+			'ch_white' : $('#ch_white').prop('checked'),
+		})
+		.catch(err => {console.log(err);});
+	});
+
+	$('#bt_new').click((evt) => {
+		oneitemSocket.sendandwait({
+			'command' : 'setbtevent',
+			'bt_new' : 'click',
+		})
+		.catch(err => {console.log(err);});
+	});
+	{% endif %}
+	$('#oneform').children(':first').children(':first').children('.col-auto')
+			.children('[type="number"], [type="text"]').change(function(evt) {
+		oneitemSocket.sendandwait({
+			'command' : 'setonefield',
+			'pname' : $(evt.target).attr('name'),
+			'value' : $(evt.target).val(),
+		})
+		.then((result) => {
+			if (result === 'OK') {
+				$(evt.target).addClass('blue');
+			};
+		})
+		.catch(err => {console.log(err);});
+	});
+
+	$('#conditions').children(':even').click((evt) => {
+		let bstr_row = $(evt.target).closest('.row').next();
+		if ('{{ mode }}' === 'E') {
+			let myreaction = $(evt.target).attr("rea");
+			if (myreaction > 0) {
+				if (bstr_row.hasClass('d-none')) {
+					oneitemSocket.sendandwait({
+						'command' : 'cond_ed_plus1',
+						'reaction' : myreaction,
+					})
+					.then((result) => {
+						if (result === 'OK') {
+							bstr_row.removeClass('d-none');
+						};
+					})
+					.catch(err => {console.log(err);});
+				} else {
+					oneitemSocket.sendandwait({
+						'command' : 'cond_ed_minus1',
+					})
+					.then((result) => {
+						if (result === 'OK') {
+							bstr_row.addClass('d-none');
+						};
+					})
+					.catch(err => {console.log(err);});
+				};
+			} else {
+				bstr_row.toggleClass('d-none');
+			};
+		} else {
+			bstr_row.toggleClass('d-none');
+		};
+		$('html, body').animate({scrollTop:$(document).height()}, 'slow');
+	})
+	{% if mode == "E" %}
+	WSAsync(
+		  ws_scheme + '//'
+		  + window.location.host
+		  + '/ws/trdbutil/'
+	)
+  .then((result) => {
+    TrDBUtilSocket = result;
+    return (TrDBUtilSocket.sendandwait({
+      'command' : 'gettags',
+      'school' : {{ myschool }},
+    }));
+  })
+	.then((result) => {
+		taglines = result;
+	  return(WSAsync(ws_scheme+'//'+window.location.host+'/ws/trigger/'));
+	})
+	{% else %}
+	WSAsync(ws_scheme+'//'+window.location.host+'/ws/trigger/')
+	{% endif %}
+	.then((result) => {
+		trigger_Socket = result;
+		trigger_Socket.socket.onclose = function(e) {
+			console.log('Trigger-Socket closed');
+		};
+		trigger_Socket.socket.onmessage = function(e) {
+			if ((e.data[0] == 'T') 
+					&& (typeof timedRefresh{{ c_view.id }} === "function")) {
+				timedRefresh{{ c_view.id }}();
+			};
+		};
+		return(WSAsync(ws_scheme+'//'+window.location.host+'/ws/c_view/'));
+	})
+	.then((result) => {
+		c_view_Socket = result;
+		{% if mode == "C" %}
+		$('#ch_show').prop('checked', true);
+		$('#ch_apply').prop('checked', ('{{ myitem.apply_mask }}' == 'True'));
+		$('#ch_edit').prop('checked', false);
+		$('#ch_white').prop('checked', false);
+		{% endif %}
+		return(WSAsync(ws_scheme + '//' + window.location.host + '/ws/oneitem/'));
+	})
+	.then((result) => {
+		oneitemSocket = result;
+		oneitemSocket.sendandwait({
+			'command' : 'setmyitem',
+			'mode' : '{{ mode }}',
+			'itemid' : {{ myitem.id }},
+		})
+	})
+	.then(() => {
+		{% if mode == "E" %}
+		return(oneitemSocket.sendandwait({
+			'command' : 'get_all_conditions',
+		}));
+	})
+	.then((result) => {
+		c_dict = result;
+		{% endif %}
+		{% if mode == "C" %}
+		oneitemSocket.sendandwait({
+			'command' : 'setcbstatus',
+			'ch_show' : $('#ch_show').prop('checked'),
+			'ch_apply' : $('#ch_apply').prop('checked'),
+			'ch_edit' : $('#ch_edit').prop('checked'),
+		})
+	})
+	.then(() => {
+		{% endif %}
+		$.get('/c_client/c_canvas/{{ c_view.id }}/X/0/', ((data ) => {
+			$('#spaceforcanvas').html(data);
+			mycanvas = $('#canvas{{ c_view.id }}');
+			let overcanvas = false;
+
+			mycanvas.mousedown((evt) => {
+				if($('#ch_edit').prop('checked') && ('{{ sizecode }}' === 'L')) {
+					let x = evt.originalEvent.pageX - mycanvas.offset().left;
+					let y = evt.originalEvent.pageY - mycanvas.offset().top;
+					oneitemSocket.sendandwait({
+						'command' : 'mousedown',
+						'x' : x,
+						'y' : y,
+					})
+					.catch(err => {console.log(err);});
+					overcanvas = true;
+				};
+			});
+			$( document.body ).mouseup((evt) => {
+				if (overcanvas) {
+					let x = evt.originalEvent.pageX - mycanvas.offset().left;
+					let y = evt.originalEvent.pageY - mycanvas.offset().top;
+					oneitemSocket.sendandwait({
+						'command' : 'mouseup',
+						'x' : x,
+						'y' : y,
+					})
+					.catch(err => {console.log(err);});
+					overcanvas = false;
+				};
+			});
+			$( document.body ).mousemove((evt) => {
+				if (overcanvas) {
+					let x = evt.originalEvent.pageX - mycanvas.offset().left;
+					let y = evt.originalEvent.pageY - mycanvas.offset().top;
+					oneitemSocket.sendandwait({
+						'command' : 'mousemove',
+						'x' : x,
+						'y' : y,
+					})
+					.catch(err => {console.log(err);});
+				};
+			});
+		}));
+		docready_1();
+		docready_2();
+		docready_3();
+		docready_4();
+		docready_5();
+	})
+	.catch(err => {console.log(err);});
+});
+	
+</script>
+
+
+<div class="container-fluid float-left">
+	<div class="row">
+		<div class="col-auto">
+			<div id="spaceforcanvas"></div>
+		</div>
+	</div>
+</div>
+
+{% if may_write %}
+  <div class="container-fluid float-left" id="conditions">
+	  <div class="row my-1 blue">
+		  <div class="col-auto my-2">General settings</div>
+	  </div>
+	  <div class="row my-1 d-none">
+		  <form action="{{ myurl }}{{ myitem.id }}/" autocomplete="off" 
+				  method="post" id="oneform">
+			  <div class="container-fluid float-left">
+				  <div class="row my-2">
+					  {% csrf_token %}
+					  {% spaceless %}
+					  {% for field in form %}
+					  <div class="col-auto my-2">
+						  {{ field.errors }}
+						  {{ field.label_tag }} {{ field }}
+						  {% if field.help_text %}
+						  <p class="help">{{ field.help_text|safe }}</p>
+						  {% endif %}
+					  </div>
+					  {% endfor %}
+					  {% endspaceless %}
+				  </div>
+			  </div>
+			  <div class="container-fluid float-left">
+				  <div class="row my-1">
+					  <div class="col-auto my-2">
+						  <input type="submit" value="Submit">
+					  </div>
+				  </div>
+			  </div>
+		  </form>
+	  </div>
+	  {% if mode == "C" %}
+	  <div class="row my-1 blue" rea="0">
+		  <div class="col-auto my-2" rea="0">Mask settings</div>
+	  </div>
+	  <div class="row my-1 d-none" id="cam_c_boxes">
+		  <div class="col-auto my-2">
+			  <label for="ch_show">Show</label>
+			  <input type="checkbox" id="ch_show" name="ch_show">
+		  </div>
+		  <div class="col-auto my-2">
+			  <label for="ch_apply">Apply</label>
+			  <input type="checkbox" id="ch_apply" name="ch_apply">
+		  </div>
+		  <div class="col-auto my-2">
+			  <label for="ch_edit">Edit</label>
+			  <input type="checkbox" id="ch_edit" name="ch_edit">
+		  </div>
+		  <div class="col-auto my-2">
+			  <label for="ch_white">White Marks</label>
+			  <input type="checkbox" id="ch_white" name="ch_white">
+		  </div>
+		  <div class="col-auto my-2">
+			  <button type="button" id="bt_new">New Masked Area</button>
+		  </div>
+	  </div>
+	  {% endif %}
+	  {% if mode == "E" %}
+	  <div class="row my-1 blue" rea="1">
+		  <div class="col-auto my-2" rea="1">Conditions for showing event frame...</div>
+	  </div>
+	  <div class="row my-1 d-none">
+		  <div class="col-auto my-2">
+			  {% include "c_client/conditions.html" with reaction=1 %}
+		  </div>
+	  </div>
+	  <div class="row my-1 blue" rea="2">
+		  <div class="col-auto my-2" rea="2">Conditions for sending to school...</div></div>
+	  <div class="row my-1 d-none">
+		  <div class="col-auto my-2">
+			  {% include "c_client/conditions.html" with reaction=2 %}
+		  </div>
+	  </div>
+	  <div class="row my-1 blue" rea="3">
+		  <div class="col-auto my-2" rea="3">Conditions for recording video...</div></div>
+	  <div class="row my-1 d-none">
+		  <div class="col-auto my-2">
+			  {% include "c_client/conditions.html" with reaction=3 %}
+		  </div>
+	  </div>
+	  <div class="row my-1 blue" rea="4">
+		  <div class="col-auto my-2" rea="4">Conditions for sending email...</div></div>
+	  <div class="row my-1 d-none">
+		  <div class="col-auto my-2">
+			  {% include "c_client/conditions.html" with reaction=4 %}
+		  </div>
+	  </div>
+	  <div class="row my-1 blue" rea="5">
+		  <div class="col-auto my-2" rea="5">Conditions for alarm...</div></div>
+	  <div class="row my-1 d-none">
+		  <div class="col-auto my-2">
+			  {% include "c_client/conditions.html" with reaction=5 %}
+		  </div>
+	  </div>
+	  {% endif %}
+  </div>
+{% endif %}
+
+{% endblock %}
+

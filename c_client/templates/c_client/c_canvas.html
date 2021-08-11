@@ -1,0 +1,57 @@
+<div>
+    <h1>{{ name }}</h1>
+		<h5>{{ xres }}x{{ yres }}, fps = <span id="fpstag{{ vidx }}">?</span>, views = <span id="vnrtag{{ vidx }}">?</span></h5>
+		{% if mode == "X" %}
+    <canvas id="canvas{{ vidx }}" width="{{ width }}px" height="{{ height }}"></canvas>
+		{% endif %}
+		{% if mode == "C" %}
+    <a href="/c_client/onecam/{{ idx }}/"><canvas id="canvas{{ vidx }}" width="{{ width }}px" height="{{ height }}" /></a>
+		{% endif %}
+		{% if mode == "D" %}
+    <a href="/c_client/onedetector/{{ idx }}/"><canvas id="canvas{{ vidx }}" width="{{ width }}px" height="{{ height }}" /></a>
+		{% endif %}
+		{% if mode == "E" %}
+    <a href="/c_client/oneeventer/{{ idx }}/"><canvas id="canvas{{ vidx }}" width="{{ width }}px" height="{{ height }}" /></a>
+		{% endif %}
+</div>
+<script >
+
+let wait{{ vidx }} = 0;
+let canvas{{ vidx }} = document.getElementById("canvas{{ vidx }}");
+let ctx{{ vidx }} = canvas{{ vidx }}.getContext("2d");
+let img{{ vidx }} = new Image();
+img{{ vidx }}.onload = function() {
+	drawOnCanvas{{ vidx }}();
+	wait{{ vidx }} = 0;
+}
+
+function timedRefresh{{ vidx }}() {
+	if (wait{{ vidx }} == 0) {
+		wait{{ vidx }} = 1;
+		img{{ vidx }}.src = '/c_client/getjpg/'+{{ vidx }}+'/'+Date.now()+'/';
+	};
+};
+r_array['{{ vidx }}'] = timedRefresh{{ vidx }};
+
+function drawOnCanvas{{ vidx }}() {
+	ctx{{ vidx }}.clearRect(0, 0, canvas{{ vidx }}.width, canvas{{ vidx }}.height);
+	ctx{{ vidx }}.drawImage(img{{ vidx }}, 0, 0, canvas{{ vidx }}.width, canvas{{ vidx }}.height);
+};
+
+
+trigger_Socket.sendandwait({
+	'command' : 'starttrigger',
+	'viewnr' : {{ vidx }},
+})
+setInterval(() => {
+	c_view_Socket.sendandwait({
+		'command' : 'getcaminfo',
+		'viewnr' : {{ vidx }},
+	})
+	.then((result) => {
+		$('#fpstag{{ vidx }}').text(result.fps);
+		$('#vnrtag{{ vidx }}').text(result.viewers);
+	})
+}, 5000);
+
+</script>

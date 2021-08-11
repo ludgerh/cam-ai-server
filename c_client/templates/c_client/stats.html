@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Cache-Control" content="no-cache" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+	<title>CAM-AI Statistics</title>
+	{% if debug %}
+	{% load static %}
+	<link rel="stylesheet" href="{% static 'git/c_client/camai.css' %}">
+  <link rel="shortcut icon" href="{% static 'git/assets/images/favicon.ico' type='image/x-icon' %}">
+	{% else %}
+	<link rel="stylesheet" href="https://static.cam-ai.de/c_client/camai.css">
+	{% endif %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"></script>
+</head>
+<body>
+<main>
+<div class="fettgross"><br>CAM-AI Statistics<br><br></div>
+{% if debug %}
+<div class="fettgross">*** Debug-Mode ***<br><br></div>
+{% endif %}
+{% for school in schools %}
+	{% if school.modelfits %}
+		<div class="fettgross">Model: {{ school.name }}<br></div>
+		 {{ school.count }} frames
+
+		<canvas id="model{{ school.id }}" width="800" height="500"></canvas>
+		<script>
+		var lineChartData = {
+			labels: [
+			{% for fit in school.modelfits %}
+				'{{ fit.id }}',
+			{% endfor %}
+			],
+			datasets: [{
+				label: 'val_loss',
+				borderColor: 'rgba(255, 0, 0, 0.8)',
+				fill: false,
+				data: [
+				{% for fit in school.modelfits %}
+					'{{ fit.val_loss }}',
+				{% endfor %}
+				],
+				yAxisID: 'y-axis-1',
+			}, {
+				label: 'val_cmetrics',
+				borderColor: 'rgba(0, 255, 0, 0.8)',
+				fill: false,
+				data: [
+				{% for fit in school.modelfits %}
+					'{{ fit.val_cmetrics }}',
+				{% endfor %}
+				],
+				yAxisID: 'y-axis-2'
+			}, {
+				label: 'loss',
+				borderColor: 'rgba(255, 0, 0, 0.5)',
+				fill: false,
+				data: [
+				{% for fit in school.modelfits %}
+					'{{ fit.loss }}',
+				{% endfor %}
+				],
+				yAxisID: 'y-axis-1',
+			}, {
+				label: 'cmetrics',
+				borderColor: 'rgba(0, 255, 0, 0.5)',
+				fill: false,
+				data: [
+				{% for fit in school.modelfits %}
+					'{{ fit.cmetrics }}',
+				{% endfor %}
+				],
+				yAxisID: 'y-axis-2'
+			}]
+		};
+
+		var ctx = document.getElementById('model{{ school.id }}').getContext('2d');
+		window.myLine = Chart.Line(ctx, {
+			data: lineChartData,
+			options: {
+				elements: { point: { radius: 0 } },
+        legend: { labels: { fontColor: 'white' }},
+				responsive: false,
+				hoverMode: 'index',
+				stacked: false,
+				scales: {
+					yAxes: [{
+						ticks: {
+								fontColor: 'white'
+						},
+						type: 'linear', // only linear but allow scale type registration. This allows extensions to exist solely for log scale for instance
+						display: true,
+						position: 'left',
+						id: 'y-axis-1',
+					}, {
+						ticks: {
+								fontColor: 'white'
+						},
+						type: 'linear', // only linear but allow scale type registration. This allows extensions to exist solely for log scale for instance
+						display: true,
+						position: 'right',
+						id: 'y-axis-2',
+
+						// grid line settings
+						gridLines: {
+							drawOnChartArea: false, // only want the grid lines for one axis to show up
+						},
+					}],
+					xAxes: [{
+						ticks: {
+							fontColor: 'white'
+						},
+					}],
+				}
+			}
+		});
+		</script>
+
+		<table>
+		<tr><td>ID</td><td>made</td><td>min</td><td>CPU°C</td><td>Fan1</td>
+		<td>Fan2</td><td>GPU°C</td><td>Fan</td><td>epochs</td>
+		<td>nr_tr</td><td>nr_val</td><td>loss</td><td>h100</td><td>cmet</td>
+		<td>val_loss</td><td>val_h100</td><td>val_cmet</td><td>- -</td></tr>
+		{% for fit in school.modelfits %}
+			<tr><td>{{ fit.id }}</td>
+			<td>{{ fit.made|date:'d.m.Y H:i' }}</td>
+			<td>{{ fit.minutes|floatformat:0 }}</td>
+			<td>{{ fit.cputemp|floatformat:0 }}</td>
+			<td>{{ fit.cpufan1|floatformat:0 }}</td>
+			<td>{{ fit.cpufan2|floatformat:0 }}</td>
+			<td>{{ fit.gputemp|floatformat:2 }}</td>
+			<td>{{ fit.gpufan|floatformat:2 }}</td>
+			<td>{{ fit.epochs }}</td>
+			<td>{{ fit.nr_tr }}</td>
+			<td>{{ fit.nr_va }}</td>
+			<td>{{ fit.loss|floatformat:4 }}</td>
+			<td>{{ fit.hit100|floatformat:4 }}</td>
+			<td>{{ fit.cmetrics|floatformat:4 }}</td>
+			<td>{{ fit.val_loss|floatformat:4 }}</td>
+			<td>{{ fit.val_hit100|floatformat:4 }}</td>
+			<td>{{ fit.val_cmetrics|floatformat:4 }}</td>
+			<td><a href="/c_client/statsdetails/{{ fit.id }}/" target="_blank">Details</a></td></tr>
+		{% endfor %}
+		</table><br><br>
+	{% endif %}
+{% endfor %}
+
+</main>
+</body>
+</html>

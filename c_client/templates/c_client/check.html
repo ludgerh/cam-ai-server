@@ -1,0 +1,310 @@
+{% extends 'main/basis.html' %}
+{% block content %}
+{% if debug %}
+{% load static %}
+  <link rel="stylesheet" href="{% static 'git/c_client/c_client.css' %}">
+{% else %}
+  <link rel="stylesheet" href="https://static.cam-ai.de/c_client/c_client.css">
+{% endif %}
+<table>
+  <tr>
+    <td>
+      <div class="h1">CAM-AI Checkboard</div>
+      <div class="h1">User: {{ user.first_name }} / {{ user.id }}</div>
+    </td>
+  </tr>
+  <tr>
+    <td class="h4">
+      Select school:
+      <select id="selectschool">
+      <option value="0">Choose...</option>
+      {% for item in c_schools %}
+        <option value="{{ item.id }}">{{ item.name }}</option>
+      {% endfor %}
+      </select>
+      Select class:
+      <select id="selectclass">
+      <option value='-2'>All...</option>
+      <option value='-1'>None...</option>
+      </select>
+      {% if user.is_superuser %}
+      <input type="checkbox" id="cball">Show all
+      {% endif %}
+      <br><br>
+      <input type="checkbox" id="cbnot" checked>
+        Show not checked&nbsp;&nbsp;&nbsp;
+      <input type="checkbox" id="cbchecked">Show checked&nbsp;&nbsp;&nbsp;
+      Select predictions:
+      <select id="selectpredictions">
+      <option value="0">None</option>
+      {% for item in c_schools %}
+        <option value="{{ item.id }}">{{ item.name }}</option>
+      {% endfor %}
+      </select>&nbsp;&nbsp;&nbsp;
+      <span id="hide_if_no_write"><button type="button" id="button1">All checked!</button>&nbsp;&nbsp;&nbsp;
+      <input type="checkbox" id="cbkiller">Killer Mode&nbsp;&nbsp;&nbsp;</span>
+      {% if user.is_superuser %}
+      <button type="button" id="button2">Delete all!</button>
+      {% endif %}
+    </td>
+  </tr>
+</table>
+<table id="imagelines" class="h4">
+  <tr></tr>
+</table>
+<p align="center">
+<button type="button" class="h4" id="morebutton">More...</button>
+</p>
+<script>
+
+let taglines;
+let startchunk = 0;
+let TrDBUtilSocket;
+let ws_scheme = window.location.protocol == "https:" ? "wss:" : "ws:";
+let select_class_ready;
+let writing_schools = [{% for item in c_schools_write %}{{ item.id }},{% endfor %}];
+let may_write = false
+
+function delframe(evt) {
+  TrDBUtilSocket.sendandwait({
+    'command' : 'deltrainframe',
+    'idx' : $(evt.target).data("idx"),
+  })
+  .then((result) => {
+    if (result === 'OK') {
+      $(evt.target).hide();
+    };
+  })
+  .catch(err => {console.log(err);});
+}
+
+$('#selectschool').change(function() {
+  let schoolfortags = $('#selectschool').val();
+  may_write = (writing_schools.includes(parseInt(schoolfortags))); 
+  if (may_write) {
+    $('#hide_if_no_write').show();
+  } else {
+    $('#hide_if_no_write').hide();
+  };
+  if (schoolfortags < 1) {
+    schoolfortags = 1;
+  };
+  TrDBUtilSocket.sendandwait({
+    'command' : 'gettags',
+    'school' : parseInt(schoolfortags),
+  })
+  .then((result) => {
+    taglines = result;
+    select_class_ready = false;
+    for (let i=0; i<taglines.length; i++) {
+      if ($("#selectclass option[value='"+i+"']").length > 0) {
+        $("#selectclass option[value='"+i+"']").remove();  
+      };  
+      $("<option/>").val(i).text(taglines[i]).appendTo("#selectclass");
+    };
+    select_class_ready = true;
+    $('#selectclass').trigger("change");
+  })
+  .catch(err => {console.log(err);});
+});
+
+$('#selectclass').change(function() {
+  if (select_class_ready) {
+    updateimages();
+  };
+});
+
+$('#selectpredictions').change(function() {
+  updateimages();
+});
+
+$('#cbnot').change(function() {
+  updateimages();
+});
+
+$('#cbchecked').change(function() {
+  updateimages();
+});
+
+$('#cbkiller').change(function() {
+  updateimages();
+});
+
+$('#cball').change(function() {
+  updateimages();
+});
+
+{% if user.is_superuser %}
+$('#button1').click(function() {
+  TrDBUtilSocket.sendandwait({
+    'command' : 'checkall',
+    'model' : $('#selectschool').val(),
+    'class' : parseInt($('#selectclass').val()),
+  })
+  .then((result) => {
+    if (result === 'OK') {
+      $('#button1').addClass('blue');
+    };
+  })
+  .catch(err => {console.log(err);});
+});
+$('#button2').click(function() {
+  if ($('#cbkiller').prop('checked')) {
+    TrDBUtilSocket.sendandwait({
+      'command' : 'deleteall',
+      'model' : $('#selectschool').val(),
+      'class' : parseInt($('#selectclass').val()),
+    })
+    .then((result) => {
+      if (result === 'OK') {
+        $('#button2').addClass('blue');
+      };
+    })
+    .catch(err => {console.log(err);});
+  };
+});
+{% endif %}
+
+$('#morebutton').click(function() {
+  startchunk += 1;
+  updateimages(startchunk);
+});
+
+function updateimages(chunknr=0) {
+  if (chunknr==0) {
+    startchunk = 0;
+    $("#imagelines").find("tr:gt(0)").remove();
+  };
+  $('#button1').removeClass('blue');
+  $('#button2').removeClass('blue');
+
+  TrDBUtilSocket.sendandwait({
+    'command' : 'gettrainimages',
+    'model' : $('#selectschool').val(),
+    'class' : parseInt($('#selectclass').val()),
+    'cbnot' : $('#cbnot').prop('checked'),
+    'cbchecked' : $('#cbchecked').prop('checked'),
+  })
+  .then((result) => {
+    let frames = result;
+    let prselected = $('#selectpredictions').val();
+    let imin;
+    let imax;
+    {% if user.is_superuser %}
+    if($('#cball').prop('checked')) {
+      imin = 0;
+      imax = frames.length-1;
+    } else {
+    {% endif %}
+      imin = chunknr*80;
+      imax = Math.min(frames.length, (chunknr+1)*80)-1;
+    {% if user.is_superuser %}
+    };
+    {% endif %}
+    if (imax >= imin) {
+      for (let j=Math.trunc(imin/8); j<=Math.trunc(imax/8); j++) {
+        let tableline = '<tr>';
+        let ijmin = j*8;
+        let ijmax = Math.min(frames.length, j*8+8);
+        for (let i=ijmin; i<ijmax ; i++) {
+          tableline += '<td><img id=img'+i+' data-idx='+frames[i].id+' src="';
+          tableline += window.location.protocol + '//' +  window.location.host;
+          tableline += '/c_client/getbmp/'+$('#selectschool').val()+'/';
+          newname = frames[i].name.replace('frames/', '');
+          tableline += newname+'/"class="images" ><br>';
+          tableline += '</td>';
+        };
+        tableline += '</tr>';
+        $('#imagelines').append(tableline);
+        {% if user.is_superuser %}
+        for (let i=ijmin; i<ijmax ; i++) {
+          $('#img'+i).dblclick(delframe);
+          if($('#cbkiller').prop('checked')) {
+            $('#img'+i).click(delframe);
+          };
+        };
+        {% endif %}
+        if (prselected > 0) {
+          let indices = [];
+          for (let i=ijmin; i<ijmax ; i++) {
+            indices.push(frames[i].id);
+          };
+          TrDBUtilSocket.sendandwait({
+            'command' : 'getpredictions',
+            'idxs' : indices,
+            'school' : Number(prselected),
+            'is_school' : false,
+          })
+          .then((predictions) => {
+            for (let i=ijmin; i<ijmax ; i++) {
+              tableline = '';
+              for (k=0; k<10; k++) {
+                if (predictions[i-ijmin][k] >= 0.5) {
+                  if (frames[i].cs[k] < 0.5) {
+                    tableline += '<div class="blue">';
+                  } else {
+                    tableline += '<div>';
+                  };
+                } else {
+                  if (frames[i].cs[k] >= 0.5) {
+                    tableline += '<div class="blue">';
+                  } else {
+                    tableline += '<div>';
+                  };
+                };
+                if (predictions[i-ijmin][k] > 0.5) {
+                  tableline += '-->';
+                };
+                tableline += taglines[k].substr(0,3)+': ';
+                tableline += Math.round(predictions[i-ijmin][k]*10000)/10000
+                if (frames[i].cs[k] > 0.5) {
+                  tableline += ' +++';
+                };
+                tableline += '<br></div>';
+              };
+              tableline += 'Tagged by '+frames[i].made_by;
+              $('#imagelines tr:eq('+(j+1).toString()+') td:eq('
+                +(i-ijmin).toString()+')').append(tableline);
+            };
+          })
+          .catch(err => {console.log(err);});
+        } else {
+          for (let i=ijmin; i<ijmax ; i++) {
+            tableline = '';
+            for (k=0; k<10; k++) {
+              if (frames[i].cs[k] > 0.5) {
+                tableline += taglines[k] + '<br>';
+              };
+            };
+            $('#imagelines tr:eq('+(j+1).toString()+') td:eq('
+              +(i-ijmin).toString()+')').append(tableline);
+          };
+        };
+      };
+    };
+  })
+  .catch(err => {console.log(err);});
+};
+
+$(document).ready(function() {
+  WSAsync(
+    ws_scheme + '//'
+    + window.location.host
+    + '/ws/trdbutil/'
+  )
+  .then((result) => {
+    TrDBUtilSocket = result;
+    return(TrDBUtilSocket.sendandwait({
+      'command' : 'register_ai',
+    }));
+  })
+  .then(() => {
+    $('#selectschool').trigger('change');
+    /*$('#selectpredictions').trigger("change"); */
+  })
+  .catch(err => {console.log(err);});
+});
+
+</script>
+
+{% endblock %}
