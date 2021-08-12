@@ -7,6 +7,7 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 1. ####  Creating a new user
 
    It is recommended to create a special user for operating the camera server. In our example this users name will be cam_ai :
+
    **If the sudo-utility is not yet installed** on your target system, you can install it by doing:
    `su`
    `apt update`
