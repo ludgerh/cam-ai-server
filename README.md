@@ -38,7 +38,7 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    `cd ~`
 
-   If you are logged into your target system via SSH, do this:
+   **If you are installing on a remote target system via SSH**, do this:
 
    `ssh cam_ai@[name_or_ip]`
 
@@ -48,8 +48,29 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
 2. #### Installing a database server
 
-   Because most of the non-volatile information and configuration is stored in a SQL-database, you need to install a database server. If you already have installed a recent version of MariaDB on your target system, you can skip this section.
+   Because most of the non-volatile information and configuration is stored in a SQL-database, you need to install a database server. **If you already have installed a recent version of MariaDB** on your target system, you can skip this section.
+
+   Here are the steps to install the server:
+
+   `sudo apt update`
+
+   `sudo apt install mariadb-server`
+
+   `sudo mysql_secure_installation` 
+
+   The Secure-Installation-Tool will ask you to set the database password. Do that and accept the default for all the other questions.
+
    
 
-3. Creating a database
+3. #### Creating an db user
+
+   We need a special CAM-AI-User for the database:
+
+   `sudo mysql`
+
+   `grant all on *.* to 'CAM-AI'@'localhost' identified by 'SelectAPassword' with grant option;`
+
+   `flush privileges;`
+
+   `exit`
 
