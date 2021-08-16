@@ -73,4 +73,28 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    `flush privileges;`
 
    `exit`
+   
+   
+   
+4. #### Cloning this repository from Github 
+
+   If needed, install GIT:
+
+   `sudo apt install git`
+
+   Then do the cloning:
+
+   `git clone https://github.com/ludgerh/cam-ai-server`
+
+   
+
+5. #### Create the database in the local server
+
+   Log in as the new user. You will need the password you defined in Section 3:
+
+   `mysql -u CAM-AI -p`
+
+   Then create the database:
+
+   
 
