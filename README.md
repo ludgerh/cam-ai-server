@@ -105,4 +105,44 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql`
    
    
+   
+6. #### Create your private password file
+
+7. #### Create an Python environment
+
+   Change to the project folder:
+
+   `cd ~/cam-ai-server`
+
+   Install the virtual environment tool, create an environment and update PIP:
+
+   `sudo apt install python3-venv`
+
+   `python3 -m venv env`
+
+   `source env/bin/activate`
+
+   `pip install --upgrade pip`
+
+   
+
+8. #### Fill the environment with all needed libraries
+
+   `pip install django`
+
+   `cd ~/cam-ai-server`
+
+   `cd ~/cam-ai-server`
+
+   `cd ~/cam-ai-server`
+
+   `cd ~/cam-ai-server`
+
+9. 
+
+   
+
+   #### 
+
+   
 
