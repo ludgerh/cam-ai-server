@@ -181,7 +181,7 @@ class c_eventer(c_device):
         if (self.eventdict[idict].end < (time() - self.params['event_time_gap'])):
           self.eventdict[idict].status = -1
           self.eventdict[idict].wait_for_pred_done()
-          predictions = self.eventdict[idict].pred_read(max=1.0)
+          predictions = self.eventdict[idict].pred_read(radius=10, max=1.0)
           self.eventdict[idict].goes_to_school = self.resolve_rules(2, predictions)
           self.eventdict[idict].isrecording = self.eventdict[idict].isrecording or self.resolve_rules(3, 
             predictions)

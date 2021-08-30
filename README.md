@@ -96,5 +96,13 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    Then create the database:
 
+   ``create database `C-SERVER`;``
+   
+   `exit`
+   
+   Import the initial data:
+   
+   `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql`
+   
    
 
