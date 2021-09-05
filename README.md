@@ -73,9 +73,9 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    `flush privileges;`
 
    `exit`
+
    
-   
-   
+
 4. #### Cloning this repository from Github 
 
    If needed, install GIT:
@@ -97,16 +97,26 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    Then create the database:
 
    ``create database `C-SERVER`;``
-   
+
    `exit`
-   
+
    Import the initial data:
+
+   `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql/`
+
    
-   `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql`
-   
-   
-   
+
 6. #### Create your private password file
+
+   `cp ~/cam-ai-server/c_server/passwords.py.example ~/cam-ai-server/c_server/passwords.py`
+
+   `nano ~/cam-ai-server/c_server/passwords.py`
+
+   Modify the two variables db_password and security_key. The easiest way to get a valid Django Security Key is usinfg the generator on https://djecrety.ir/ .
+
+   Save and close Nano.
+
+   
 
 7. #### Create an Python environment
 
@@ -130,19 +140,70 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    `pip install django`
 
-   `cd ~/cam-ai-server`
+   `pip install channels`
 
-   `cd ~/cam-ai-server`
+   `pip install mysqlclient`
 
-   `cd ~/cam-ai-server`
+   `pip install pillow`
 
-   `cd ~/cam-ai-server`
+   `sudo apt install libopenjp2-7-dev` (For Raspi, Debian might be different)
 
-9. 
+   `sudo apt install libtiff5` (For Raspi, Debian might be different)
+
+   `pip install opencv-contrib-python` (For Raspi, Debian might be different)
+
+   `sudo apt install python3-h5py` (For Raspi, Debian might be different)
+
+   `sudo apt install libopenexr23` (For Raspi, Debian might be different)
+
+   `sudo apt install libavcodec-extra58` (For Raspi, Debian might be different)
+
+   `sudo apt install libavformat58` (For Raspi, Debian might be different)
+
+   `sudo apt install libswscale500` (For Raspi, Debian might be different)
+
+   `sudo apt install libgtk-3-dev` (For Raspi, Debian might be different)
+
+   `sudo apt install libatlas-base-dev` (For Raspi, Debian might be different)
+
+   `pip install requests`
+
+   `sudo apt install ffmpeg` 
+
+   `pip install ffmpeg-python`
+
+   `pip install multitimer`
+
+   `pip install shapely`
+
+   `sudo apt-get install libgeos-dev` (For Raspi, Debian might be different)
 
    
 
-   #### 
+9. #### Start the server
+
+   `nano ~/cam-ai-server/c_server/settings.py`
+
+   Find the variable ALLOWED_HOSTS and add your hosts domain or IP address to the bracket.
+
+   Find the variable STATIC_ROOT and replace the old value by "~/cam-ai-server/c_server/static/"
+
+   Save and close Nano.
+
+   `cd ~/cam-ai-server/c_client/static/nogit`
+
+   `wget -r https://static.cam-ai.de/static.zip`
+
+   `unzip static.cam-ai.de/static.zip`
+
+   `rm -R static.cam-ai.de`
+
+   `cd ~/cam-ai-server`
+
+10. ...disallowed host...
 
    
 
+11. 
+
+12. 
