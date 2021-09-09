@@ -1,5 +1,6 @@
 /fifo/
 /static/
+/log/
 /__pycache__/
 /c_client/migrations/
 /c_client/static/nogit/
