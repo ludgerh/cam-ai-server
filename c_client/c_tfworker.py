@@ -240,9 +240,10 @@ class c_tfworker:
         ts_one = time()
         had_timeout = (self.model_buffers[schoolnr].ts + tfw_timeout) < time()
         if ((self.model_buffers[schoolnr].nr_images >= tfw_maxblock) 
-            or had_timeout):
+            or (had_timeout and self.model_buffers[schoolnr].nr_images > 0)):
           self.model_buffers[schoolnr].ts = time()
           slice_to_process = self.model_buffers[schoolnr].get(tfw_maxblock)
+          logger.info('Out #'+str(schoolnr)+'#'+str(slice_to_process.shape[0]))
           self.check_model(schoolnr, logger)
           if gpu_sim >= 0:
             if gpu_sim > 0:
@@ -291,9 +292,10 @@ class c_tfworker:
                 subslice = np.vstack((self.model_buffers[schoolnr].pre_rest, 
                   subslice))
                 self.model_buffers[schoolnr].pre_rest = None
-              #if item[1] in self.users: #ist das nötig?
-              #  self.users[item[1]].fifoout.put(subslice)
-              self.users[item[1]].fifoout.put(subslice)
+              with self.users_lock:
+                if item[1] in self.users:
+                  self.users[item[1]].fifoout.put(subslice)
+              logger.info('In #'+str(schoolnr)+'>'+str(item[1])+'#'+str(subslice.shape[0]))
             else:
               self.model_buffers[schoolnr].pre_rest = subslice
               self.model_buffers[schoolnr].user_rest = item[1]
@@ -314,7 +316,6 @@ class c_tfworker:
       
 
   def run2(self, logger):
-    #MultiTimer(interval=0.1, function=self.ts_check, runonstart=False).start()
     self.logger = logger
     used_models = []
     myeventers = eventer.objects.filter(active=True)
@@ -354,16 +355,16 @@ class c_tfworker:
     myuser = tf_user()
     with self.users_lock:
       self.users[myuser.id] = myuser
-    #if self.logger:
-    #  self.logger.info('Registered client #'+str(myuser.id)+' ###'+str(len(self.users.keys())))
+    if self.logger:
+      self.logger.info('Registered client #'+str(myuser.id))
     return(myuser.id)
 
   def do_unregister(self, index):
     if index in self.users:
       with self.users_lock:
         del self.users[index]
-      #if self.logger:
-      #  self.logger.info('Unregistered client #'+str(index)+' ####'+str(len(self.users.keys())))
+      if self.logger:
+        self.logger.info('Unregistered client #'+str(index))
 
   def unregister(self, index):
     Timer(60, self.do_unregister, [index]).start()

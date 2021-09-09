@@ -2,7 +2,7 @@
 
 #### CAM-AI reads security cameras and adds artificial intelligence: No more false alarms!
 
-This is an installation tutorial for a development system of the CAM-AI Server on a PC running Debian Linux. Other configurations are probably possible, but might need some testing and modifications. Here we go:
+This is an installation tutorial for a development system of the CAM-AI Server on a RaspBerry Pi 4 with 8 GB of memory. Other configurations are probably possible, but might need some testing and modifications. Here we go:
 
 1. ####  Creating a new user
 
@@ -200,10 +200,12 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    `cd ~/cam-ai-server`
 
-10. ...disallowed host...
+   `mkdir ~/cam-ai-server/log`
+
+   After that you should be able to start the server. Replace the IP with the actual address of your server host.
+
+   `python manage.py runserver 192.168.125.50:8000`
 
    
 
-11. 
-
-12. 
+10. 
