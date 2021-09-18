@@ -57,11 +57,16 @@ class c_eventer(c_device):
           for j in self.eventdict:
             if ((j > i) and (self.eventdict[j].status == 0) 
                 and hasoverlap(self.eventdict[i], self.eventdict[j])):
-              self.eventdict[i][0] = min(self.eventdict[i][0], self.eventdict[j][0])
-              self.eventdict[i][1] = max(self.eventdict[i][1], self.eventdict[j][1])
-              self.eventdict[i][2] = min(self.eventdict[i][2], self.eventdict[j][2])
-              self.eventdict[i][3] = max(self.eventdict[i][3], self.eventdict[j][3])
-              self.eventdict[i].end = max(self.eventdict[i].end, self.eventdict[j].end)
+              self.eventdict[i][0] = min(self.eventdict[i][0], 
+                self.eventdict[j][0])
+              self.eventdict[i][1] = max(self.eventdict[i][1], 
+                self.eventdict[j][1])
+              self.eventdict[i][2] = min(self.eventdict[i][2], 
+                self.eventdict[j][2])
+              self.eventdict[i][3] = max(self.eventdict[i][3], 
+                self.eventdict[j][3])
+              self.eventdict[i].end = max(self.eventdict[i].end, 
+                self.eventdict[j].end)
               self.eventdict[j].status = -2
               with self.eventdict[i].frames_lock:
                 with self.eventdict[j].frames_lock:
@@ -94,7 +99,7 @@ class c_eventer(c_device):
     self.vid_str_dict = {}
     multitimer.MultiTimer(interval=0.5, function=self.check_events, 
       runonstart=False).start()
-    multitimer.MultiTimer(interval=0.1, function=self.check_frames, 
+    multitimer.MultiTimer(interval=0.1, function=self.display_events, 
       runonstart=False).start()
     super().run(logger)
 
@@ -131,10 +136,11 @@ class c_eventer(c_device):
 
       with self.ev_lock:
         for idict in self.eventdict:
-          if ((self.eventdict[idict].end > (frame[2] - self.params['event_time_gap']))
+          if ((self.eventdict[idict].end > (frame[2] - 
+              self.params['event_time_gap']))
             and hasoverlap((frame[3]-margin, frame[4]+margin, 
               frame[5]-margin, frame[6]+margin), self.eventdict[idict])
-            and (self.eventdict[idict].status >= 0)):
+            and (self.eventdict[idict].status == 0)):
             found = self.eventdict[idict]
             break
       if found is None:
@@ -171,20 +177,36 @@ class c_eventer(c_device):
           found.frames.append(frame)
           found.shrink()
         found.get_predictions(self.params['school'], logger=self.logger)
-      with self.ev_lock:
-        self.merge_events()
+      self.merge_events()
 
   def check_events(self):
-    for idict in self.eventdict.copy():
-      if (self.eventdict[idict].status == 0):
-        self.eventdict[idict].get_predictions(self.params['school'], logger=self.logger)
-        if (self.eventdict[idict].end < (time() - self.params['event_time_gap'])):
-          self.eventdict[idict].status = -1
-          self.eventdict[idict].wait_for_pred_done()
+    eventdictcopy = self.eventdict.copy()
+    for idict in eventdictcopy:
+      if self.eventdict[idict].status < 0:   
+        self.eventdict[idict].unregister()
+        if not (self.eventdict[idict].isrecording 
+            or self.eventdict[idict].goes_to_school):
+          while True:
+            try:
+              event.objects.filter(id=self.eventdict[idict].id).delete()
+              break
+            except OperationalError:
+              connection.close()
+        with self.ev_lock:
+          del self.eventdict[idict]
+      else:
+        oldnumberofframes = len(self.eventdict[idict].frames)
+        self.eventdict[idict].get_predictions(self.params['school'], 
+          logger=self.logger)
+        if (self.eventdict[idict].end < (time() - 
+            self.params['event_time_gap'])):
+          self.eventdict[idict].wait_for_pred_done(limit = oldnumberofframes)
           predictions = self.eventdict[idict].pred_read(radius=10, max=1.0)
-          self.eventdict[idict].goes_to_school = self.resolve_rules(2, predictions)
-          self.eventdict[idict].isrecording = self.eventdict[idict].isrecording or self.resolve_rules(3, 
+          self.eventdict[idict].goes_to_school = self.resolve_rules(2, 
             predictions)
+          self.eventdict[idict].isrecording = (
+            self.eventdict[idict].isrecording or self.resolve_rules(3,
+              predictions))
           if self.resolve_rules(4, predictions):
             to_email = self.params['alarm_email']
           else:
@@ -192,17 +214,19 @@ class c_eventer(c_device):
           if self.resolve_rules(5, predictions):
             alarm(self.id, self.params['name'], predictions, 
               self.params['school'], self.logger)
-          if (self.eventdict[idict].goes_to_school or self.eventdict[idict].isrecording):
-            all_done = True
+          if (self.eventdict[idict].goes_to_school 
+              or self.eventdict[idict].isrecording):
             savename = ''
             if self.eventdict[idict].isrecording:
               if ((self.parent.latest_ready_video() is not None) 
-                  and (self.eventdict[idict].end <= self.parent.latest_ready_video()[0])):
+                  and (self.eventdict[idict].end 
+                    <= self.parent.latest_ready_video()[0])):
                 my_vid_list = []
                 my_vid_str = ''
                 with self.parent.vid_list_lock:
                   for i in range(len(self.parent.vid_list)):
-                    if self.eventdict[idict].start <= self.parent.vid_list[i][0]:
+                    if (self.eventdict[idict].start 
+                        <= self.parent.vid_list[i][0]):
                       my_vid_list.append(self.parent.vid_list[i][1])
                       my_vid_str += self.parent.vid_list[i][2]
                       if self.parent.vid_list[i][0] > self.eventdict[idict].end:
@@ -245,74 +269,60 @@ class c_eventer(c_device):
                 if not isdouble:
                   run(['ffmpeg', '-ss', '00:15', '-v', 'fatal', '-i', savepath, 
                     '-vframes', '1', '-q:v', '2', savepath[:-4]+'.jpg'])
-              else:
-                all_done = False
-            if all_done:
-              self.eventdict[idict].save(self.params['school'], self.id, self.params['name'], 
-                self.eventdict[idict].goes_to_school, to_email, savename)
-              self.eventdict[idict].status = -2
+                self.eventdict[idict].save(self.params['school'], 
+                  self.id, self.params['name'], 
+                  self.eventdict[idict].goes_to_school, to_email, savename)
+                self.eventdict[idict].status = -2
+              else:  
+                self.eventdict[idict].status = -1  
           else:
-            self.eventdict[idict].status = -2
-    for idict in self.eventdict.copy():
-      if (self.eventdict[idict].status == -2):
-        self.eventdict[idict].unregister()
-        if not (self.eventdict[idict].isrecording or self.eventdict[idict].goes_to_school):
-          while True:
-            try:
-              event.objects.filter(id=self.eventdict[idict].id).delete()
-              all_done = True
-              break
-            except OperationalError:
-              connection.close()
-    with self.ev_lock:
-      self.eventdict = {
-        key:value for (key, value) in self.eventdict.items() if value.status > -2}
+            self.eventdict[idict].status = -2    
 
-  def check_frames(self):
+  def display_events(self):
     while len(self.frameslist) > 0:
       myframeplusevents = self.frameslist.popleft()
       all_done = True
-      for i in range(len(myframeplusevents['events'])):
-        if myframeplusevents['events'][i] in self.eventdict:
-          myevent = self.eventdict[myframeplusevents['events'][i]]
+      for item in myframeplusevents['events']:
+        if (item[0] in self.eventdict) and (self.eventdict[item[0]].status == 0):
+          myevent = self.eventdict[item[0]]
           myevent.get_predictions(self.params['school'], logger=self.logger)
-          if (myevent.status > -2) and (not myevent.pred_is_done(myframeplusevents['limits'][myframeplusevents['events'][i]])):
+          if ((myevent.status == 0) 
+              and (not myevent.pred_is_done(ts=item[1]))):
             all_done = False
             break
-
       if all_done:
         frame = myframeplusevents['frame']
         newimage = frame[1].copy()
         for i in myframeplusevents['events']:
-          if i in self.eventdict:
-            item = self.eventdict[i]
-            if item.status > -2:
+          if i[0] in self.eventdict:
+            item = self.eventdict[i[0]]
+            if item.status == 0:
               predictions = item.pred_read(max=1.0)
               if self.nr_of_cond_ed > 0:
                 if self.resolve_rules(self.last_cond_ed, predictions):
                   colorcode= (0, 255, 0)
                 else:
                   colorcode= (0, 0, 255)
-                displaylist = [(i, predictions[i]) for i in range(10)]
+                displaylist = [(j, predictions[j]) for j in range(10)]
                 displaylist.sort(key=lambda x: -x[1])
                 cv.rectangle(newimage, rect_btoa(item), colorcode, 5)
                 if item[2] < (self.params['yres'] - item[3]):
                   y0 = item[3]+20
                 else:
                   y0 = item[2]-190
-                for i in range(10):
-                  cv.putText(newimage, self.classes_list[displaylist[i][0]][:3]
-                    +' - '+str(round(displaylist[i][1],2)), 
-                    (item[0]+2, y0 + i * 20), 
+                for j in range(10):
+                  cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
+                    +' - '+str(round(displaylist[j][1],2)), 
+                    (item[0]+2, y0 + j * 20), 
                     cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
               else:
                 imax = -1
                 pmax = -1
-                for i in range(1,len(predictions)):
-                  if predictions[i] >= 0.0:
-                    if predictions[i] > pmax:
-                      pmax = predictions[i]
-                      imax = i
+                for j in range(1,len(predictions)):
+                  if predictions[j] >= 0.0:
+                    if predictions[j] > pmax:
+                      pmax = predictions[j]
+                      imax = j
                 if self.resolve_rules(1, predictions):
                   cv.rectangle(newimage, rect_btoa(item), (255, 0, 0), 5)
                   cv.putText(newimage, self.classes_list[imax][:3], (item[0]+10, 
@@ -328,16 +338,14 @@ class c_eventer(c_device):
     if len(self.frameslist) < 5:
       frameplusevents = {}
       frameplusevents['frame'] = frame
-      frameplusevents['limits'] = {}
       frameplusevents['events'] = []
-      with self.ev_lock:
-        for idict in self.eventdict:
-          if self.eventdict[idict].status > -1:
-            with self.eventdict[idict].frames_lock:
-              frameplusevents['limits'][idict] = len(self.eventdict[idict].frames)
-            frameplusevents['events'].append(idict)
-            self.eventdict[idict].get_predictions(self.params['school'], logger=self.logger)
-        self.frameslist.append(frameplusevents)
+      eventdictcopy = self.eventdict.copy()
+      for idict in eventdictcopy:
+        if eventdictcopy[idict].status > -1:
+          frameplusevents['events'].append((idict, eventdictcopy[idict].end))
+          eventdictcopy[idict].get_predictions(self.params['school'], 
+            logger=self.logger)
+      self.frameslist.append(frameplusevents)
 
   def resolve_rules(self, reaction, predictions):
     if predictions is None:

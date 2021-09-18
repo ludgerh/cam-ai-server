@@ -243,7 +243,7 @@ class c_tfworker:
             or (had_timeout and self.model_buffers[schoolnr].nr_images > 0)):
           self.model_buffers[schoolnr].ts = time()
           slice_to_process = self.model_buffers[schoolnr].get(tfw_maxblock)
-          logger.info('Out #'+str(schoolnr)+'#'+str(slice_to_process.shape[0]))
+          #logger.info('Out #'+str(schoolnr)+'#'+str(slice_to_process.shape[0]))
           self.check_model(schoolnr, logger)
           if gpu_sim >= 0:
             if gpu_sim > 0:
@@ -295,7 +295,7 @@ class c_tfworker:
               with self.users_lock:
                 if item[1] in self.users:
                   self.users[item[1]].fifoout.put(subslice)
-              logger.info('In #'+str(schoolnr)+'>'+str(item[1])+'#'+str(subslice.shape[0]))
+              #logger.info('In #'+str(schoolnr)+'>'+str(item[1])+'#'+str(subslice.shape[0]))
             else:
               self.model_buffers[schoolnr].pre_rest = subslice
               self.model_buffers[schoolnr].user_rest = item[1]
@@ -352,19 +352,20 @@ class c_tfworker:
           self.model_buffers[schoolnr].append(newitem)
 
   def register(self):
-    myuser = tf_user()
     with self.users_lock:
+      myuser = tf_user()
       self.users[myuser.id] = myuser
-    if self.logger:
-      self.logger.info('Registered client #'+str(myuser.id))
+    #if self.logger:
+    #  self.logger.info('Registered client #'+str(myuser.id)+' >'+str(len(self.users.keys())))
     return(myuser.id)
 
   def do_unregister(self, index):
-    if index in self.users:
-      with self.users_lock:
+    with self.users_lock:
+      if index in self.users:
         del self.users[index]
-      if self.logger:
-        self.logger.info('Unregistered client #'+str(index))
+    #if self.logger:
+    #  self.logger.info('Unregistered client #'+str(index)+' >'+str(len(self.users.keys())))
+    #  self.logger.info(str(self.users.keys()))
 
   def unregister(self, index):
     Timer(60, self.do_unregister, [index]).start()

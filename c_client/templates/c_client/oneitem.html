@@ -227,11 +227,13 @@ $(document).ready(function() {
 				};
 			});
 		}));
+		{% if mode == "E" %}
 		docready_1();
 		docready_2();
 		docready_3();
 		docready_4();
 		docready_5();
+		{% endif %}
 	})
 	.catch(err => {console.log(err);});
 });

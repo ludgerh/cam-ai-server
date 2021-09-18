@@ -62,7 +62,8 @@ class c_event(list):
     self.append(False)
     self.next_to_send = 0
     self.predictions = np.zeros((0,len(classes_list)))
-    self.frames.append(frame)
+    with self.frames_lock:
+      self.frames.append(frame)
     eventline = event()
     while True:
       try:
@@ -96,10 +97,14 @@ class c_event(list):
       return(np.clip(result2, 0.0, 1.0))
 
   def pred_thread(self, logger= None):
-    while len(self.frames) > self.predictions.shape[0]:
-      newpredictions = tfworker.users[self.tf_w_index].fifoout.get(block=True)
-      self.predictions = np.vstack((self.predictions, newpredictions))
-  
+    while True:
+      with self.frames_lock:
+        worktodo = len(self.frames) > self.predictions.shape[0]
+      if worktodo:
+        newpredictions = tfworker.users[self.tf_w_index].fifoout.get(block=True)
+        self.predictions = np.vstack((self.predictions, newpredictions))
+      else:
+        break
 
   def get_predictions(self, myschool, logger=None):
     if not self.pred_busy:
@@ -118,15 +123,23 @@ class c_event(list):
             self.thread = e.submit(self.pred_thread, logger)
       self.pred_busy = False
   
-  def wait_for_pred_done(self):
-    while len(self.frames) > self.predictions.shape[0]:
-      sleep(0.01)
-
-  def pred_is_done(self, limit = None):
+  def wait_for_pred_done(self, limit = None):
     if limit is None:
+      while len(self.frames) > self.predictions.shape[0]:
+        sleep(0.01)
+    else:
+      while limit > self.predictions.shape[0]:
+        sleep(0.01)
+
+  def pred_is_done(self, ts = None):
+    if ts is None:
       return(len(self.frames) == self.predictions.shape[0])
     else:
-      return(limit <= self.predictions.shape[0])
+      if self.predictions.shape[0] == 0:
+        return(False)
+      else:
+        with self.frames_lock:
+          return((self.frames[self.predictions.shape[0] - 1][2]) >= ts)
 
   def p_string(self):
     predline = '['
@@ -138,8 +151,7 @@ class c_event(list):
     return(predline+']')
 
   def frames_filter(self, outlength):
-    with self.frames_lock:
-      result = self.frames[:self.predictions.shape[0]]
+    result = self.frames[:self.predictions.shape[0]]
     if len(result) > outlength:
       predlist = self.predictions.tolist()
       sortindex = list(range(len(result)))
