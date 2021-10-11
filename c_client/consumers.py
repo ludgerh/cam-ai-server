@@ -266,7 +266,7 @@ class SchoolDBUtilConsumer(AsyncWebsocketConsumer):
       framelines = event_frame.objects.filter(event__id = params['event'])
       i = 0
       for item in framelines:
-        newname = 'frames/'+item.name.split('/')[2]
+        newname = 'frames/'+item.name.replace('/','_')
         if item.status == -1:
           t = trainframe.objects.get(id=item.trainframe)
           newitem = False

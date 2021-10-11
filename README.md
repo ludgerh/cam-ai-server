@@ -2,7 +2,7 @@
 
 #### CAM-AI reads security cameras and adds artificial intelligence: No more false alarms!
 
-This is an installation tutorial for a development system of the CAM-AI Server on a RaspBerry Pi 4 with 8 GB of memory. Other configurations are probably possible, but might need some testing and modifications. Here we go:
+This is an installation tutorial for a development system of the CAM-AI Server on a RaspBerry Pi 4 with 4 GB of memory and Debian 11 64bit (get it at https://raspi.debian.net/tested-images/). Other configurations are probably possible, but might need some testing and modifications. Raspberry Pi OS does not work. Here we go:
 
 1. ####  Creating a new user
 
@@ -10,19 +10,19 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    **If the sudo-utility is not yet installed** on your target system, you can install it by doing:
 
-   `su`
+   Log in as root.
 
    `apt update`
 
    `apt install sudo`
 
-   `sbin/adduser cam_ai`
+   `/usr/sbin/adduser cam_ai`
 
-   `sbin/usermod -aG sudo cam_ai`
-
-   `exit`
+   `/usr/sbin/usermod -aG sudo cam_ai`
 
    You will be asked for all kind of information for the new user. The only thing you need to provide is a valid password (2 times), you can skip the rest by hitting return a couple of times. 
+
+   `exit`
 
    **If the sudo utility is already installed** and your present user has sudo privileges, this part is easier:
 
@@ -39,6 +39,8 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    `cd ~`
 
    **If you are installing on a remote target system via SSH**, do this:
+
+   `exit`
 
    `ssh cam_ai@[name_or_ip]`
 
@@ -102,7 +104,7 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    Import the initial data:
 
-   `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql/`
+   `mysql -u CAM-AI -p "C-SERVER" < ~/cam-ai-server/sql/new.sql`
 
    
 
@@ -119,6 +121,12 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    
 
 7. #### Create an Python environment
+
+   On Raspi-Debian you have to install Python first:
+
+   `sudo apt install python3`
+
+   `sudo apt install python3-dev`
 
    Change to the project folder:
 
@@ -146,25 +154,7 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    `pip install pillow`
 
-   `sudo apt install libopenjp2-7-dev` (For Raspi, Debian might be different)
-
-   `sudo apt install libtiff5` (For Raspi, Debian might be different)
-
-   `pip install opencv-contrib-python` (For Raspi, Debian might be different)
-
-   `sudo apt install python3-h5py` (For Raspi, Debian might be different)
-
-   `sudo apt install libopenexr23` (For Raspi, Debian might be different)
-
-   `sudo apt install libavcodec-extra58` (For Raspi, Debian might be different)
-
-   `sudo apt install libavformat58` (For Raspi, Debian might be different)
-
-   `sudo apt install libswscale500` (For Raspi, Debian might be different)
-
-   `sudo apt install libgtk-3-dev` (For Raspi, Debian might be different)
-
-   `sudo apt install libatlas-base-dev` (For Raspi, Debian might be different)
+   `pip install opencv-contrib-python`
 
    `pip install requests`
 
@@ -175,8 +165,6 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    `pip install multitimer`
 
    `pip install shapely`
-
-   `sudo apt-get install libgeos-dev` (For Raspi, Debian might be different)
 
    
 
@@ -189,6 +177,8 @@ This is an installation tutorial for a development system of the CAM-AI Server o
    Find the variable STATIC_ROOT and replace the old value by "~/cam-ai-server/c_server/static/"
 
    Save and close Nano.
+
+   `mkdir ~/cam-ai-server/c_client/static/nogit`
 
    `cd ~/cam-ai-server/c_client/static/nogit`
 
@@ -204,8 +194,9 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    After that you should be able to start the server. Replace the IP with the actual address of your server host.
 
-   `python manage.py runserver 192.168.125.50:8000`
+   `python manage.py runserver [ip]:8000`
 
    
 
 10. 
+

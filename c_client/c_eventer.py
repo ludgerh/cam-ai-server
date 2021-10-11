@@ -269,12 +269,13 @@ class c_eventer(c_device):
                 if not isdouble:
                   run(['ffmpeg', '-ss', '00:15', '-v', 'fatal', '-i', savepath, 
                     '-vframes', '1', '-q:v', '2', savepath[:-4]+'.jpg'])
-                self.eventdict[idict].save(self.params['school'], 
-                  self.id, self.params['name'], 
-                  self.eventdict[idict].goes_to_school, to_email, savename)
-                self.eventdict[idict].status = -2
               else:  
-                self.eventdict[idict].status = -1  
+                self.eventdict[idict].status = -1
+            if self.eventdict[idict].status == 0: 
+              self.eventdict[idict].save(self.params['school'], 
+                self.id, self.params['name'], 
+                self.eventdict[idict].goes_to_school, to_email, savename)
+              self.eventdict[idict].status = -2
           else:
             self.eventdict[idict].status = -2    
 
