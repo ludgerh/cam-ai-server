@@ -1,8 +1,8 @@
--- MySQL dump 10.19  Distrib 10.3.29-MariaDB, for debian-linux-gnu (x86_64)
+-- MySQL dump 10.19  Distrib 10.3.31-MariaDB, for debian-linux-gnu (x86_64)
 --
 -- Host: localhost    Database: C-SERVER-NEW
 -- ------------------------------------------------------
--- Server version	10.3.29-MariaDB-0+deb10u1
+-- Server version	10.3.31-MariaDB-0+deb10u1
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -125,7 +125,7 @@ CREATE TABLE `auth_user` (
 
 LOCK TABLES `auth_user` WRITE;
 /*!40000 ALTER TABLE `auth_user` DISABLE KEYS */;
-INSERT INTO `auth_user` VALUES (1,'pbkdf2_sha256$216000$UngaFZTCUsql$/HPOE9xkezAonTU4iWviWiA/pAHRht+V3uiJWbjUEFg=','2021-08-11 09:49:43.094072',1,'admin','admin','admin','admin@cam-ai.de',1,1,'2020-09-09 13:33:00.000000'),(2,'pbkdf2_sha256$216000$RQMlYPDfDAu5$2OT2s21EZPRaGUnvtWMdsLEeiffwXMi0qGiTtqvXj8g=','2020-12-30 13:00:45.000000',0,'nahid','','','',1,1,'2020-09-11 13:18:30.000000'),(3,'pbkdf2_sha256$216000$FUUU3o5si5Rj$hbi28zzWzwyuInopBEBO+SyQw8tOL/NLR3i5gGAMItU=','2021-01-03 22:19:32.481189',0,'mustafa','','','',1,1,'2020-09-11 13:19:17.000000'),(4,'pbkdf2_sha256$216000$WbYjq3NXsxFW$cBGPIef6IelD4zONoG69/Ej1kSR1ivHG5qL9GI2b9fE=','2021-04-06 14:04:51.489216',0,'ludger','','','',1,1,'2020-09-11 13:37:47.000000');
+INSERT INTO `auth_user` VALUES (1,'pbkdf2_sha256$216000$JuIj4N8HmyzG$w7Ia6ktbwczmDcEFyePe+6CTaOOwCUxOOB2Gx65LDkc=','2021-08-11 09:49:43.094072',1,'admin','admin','admin','admin@cam-ai.de',1,1,'2020-09-09 13:33:00.000000');
 /*!40000 ALTER TABLE `auth_user` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -611,7 +611,7 @@ CREATE TABLE `c_client_setting` (
 
 LOCK TABLES `c_client_setting` WRITE;
 /*!40000 ALTER TABLE `c_client_setting` DISABLE KEYS */;
-INSERT INTO `c_client_setting` VALUES (1,'tr_epochs',0,'1','Training'),(4,'last_model',0,'1','Nothing yet...'),(5,'schoolframespath',0,'~/sftp/school/','...'),(6,'maxtemp',0,'100','Max CPU Temp'),(7,'last_school',0,'2','Nothing yet...'),(8,'tr_xdim',0,'331','...'),(9,'tr_ydim',0,'331','...'),(10,'tpu',0,'Nein','Coral presence'),(11,'gpu',0,'Nein','Geforce presence'),(12,'gpu_sim',0,'0.1','-1 is off'),(13,'logdir',0,'/home/ludger/log/','...'),(14,'loglevel',0,'INFO','...'),(15,'basemodelpath',0,'0','...'),(16,'recordingspath',0,'0','Place for videos'),(17,'recordingsurl',0,'http://localhost/vclips/','Url for videos'),(18,'smtp_account',0,'alarm@cam-ai.de','...'),(19,'smtp_password',0,'Grmbl!123_Wmpf','...'),(20,'smtp_email',0,'alarm@cam-ai.de','...'),(21,'smtp_server',0,'smtp.strato.com','...'),(22,'smtp_port',0,'465','...'),(23,'smtp_name',0,'CAM-AI Emailer','...'),(24,'client_url',0,'http://localhost:8000/c_client/','...'),(25,'tfw_savestats',0,'0','seconds'),(26,'tfw_maxblock',0,'8','...'),(27,'tfw_timeout',0,'1','seconds to wait'),(28,'gpu_sim_loading',0,'0','...'),(29,'tfw_wsurl',0,'','For getting predictions'),(30,'tfw_wsname',0,'','For getting predictions'),(31,'tfw_wspass',0,'','For getting predictions');
+INSERT INTO `c_client_setting` VALUES (1,'tr_epochs',0,'1','Training'),(4,'last_model',0,'1','Nothing yet...'),(5,'schoolframespath',0,'~/sftp/school/','...'),(6,'maxtemp',0,'100','Max CPU Temp'),(7,'last_school',0,'2','Nothing yet...'),(8,'tr_xdim',0,'331','...'),(9,'tr_ydim',0,'331','...'),(10,'tpu',0,'Nein','Coral presence'),(11,'gpu',0,'Nein','Geforce presence'),(12,'gpu_sim',0,'0.1','-1 is off'),(13,'logdir',0,'log/','...'),(14,'loglevel',0,'INFO','...'),(15,'basemodelpath',0,'0','...'),(16,'recordingspath',0,'0','Place for videos'),(17,'recordingsurl',0,'http://localhost/vclips/','Url for videos'),(18,'smtp_account',0,'alarm@cam-ai.de','...'),(19,'smtp_password',0,'Grmbl!123_Wmpf','...'),(20,'smtp_email',0,'alarm@cam-ai.de','...'),(21,'smtp_server',0,'smtp.strato.com','...'),(22,'smtp_port',0,'465','...'),(23,'smtp_name',0,'CAM-AI Emailer','...'),(24,'client_url',0,'http://localhost:8000/c_client/','...'),(25,'tfw_savestats',0,'0','seconds'),(26,'tfw_maxblock',0,'8','...'),(27,'tfw_timeout',0,'1','seconds to wait'),(28,'gpu_sim_loading',0,'0','...'),(29,'tfw_wsurl',0,'','For getting predictions'),(30,'tfw_wsname',0,'','For getting predictions'),(31,'tfw_wspass',0,'','For getting predictions');
 /*!40000 ALTER TABLE `c_client_setting` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -945,4 +945,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2021-08-31 20:39:56
+-- Dump completed on 2021-10-11 15:29:12
