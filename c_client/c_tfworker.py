@@ -11,6 +11,8 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
+
+import cv2 as cv
 from queue import Queue, Empty
 from threading import Lock, Timer
 import numpy as np
@@ -36,7 +38,7 @@ if ((djconf.getconfigfloat('gpu_sim') < 0)
   from tensorflow.keras.regularizers import l2
   from tensorflow.keras.constraints import max_norm
 if djconf.getconfig('tfw_wsurl',''):
-  from websocket import WebSocket
+  from websocket import WebSocket#, enableTrace
 
 gpu_sim = djconf.getconfigfloat('gpu_sim')
 tfw_savestats = djconf.getconfigint('tfw_savestats', 0)
@@ -93,7 +95,7 @@ class model_buffer(deque):
     super().__init__()
     self.ts = time()
     self.nr_images = 0
-    self.img_rest = np.empty((0, xdim, ydim, 3), np.float32)
+    self.img_rest = np.empty((0, xdim, ydim, 3), np.uint8)
     self.pre_rest = None
 
   def append(self, item):
@@ -152,20 +154,25 @@ class c_tfworker:
     if tfw_wsurl:
       self.ws_ts = time()
       self.ws = WebSocket()
+      #enableTrace(True)
       self.ws.connect(tfw_wsurl)
       outdict = {
         'code' : 'auth',
         'name' : tfw_wsname,
         'pass' : tfw_wspass,
       }
-      self.ws.send(zlib.compress(json.dumps(outdict).encode()), opcode=2)
+      part1 = len(json.dumps(outdict).encode()).to_bytes(4, byteorder='big')
+      part2 = json.dumps(outdict).encode()
+      self.ws.send(part1 + part2, opcode=2)
       MultiTimer(interval=20, function=self.send_ping, runonstart=False).start()
       #ws.close()
 
   def send_ping(self):
     if (time() - self.ws_ts) > 15:
       outdict = {'code' : 'ping',}
-      self.ws.send(zlib.compress(json.dumps(outdict).encode()), opcode=2)
+      part1 = len(json.dumps(outdict).encode()).to_bytes(4, byteorder='big')
+      part2 = json.dumps(outdict).encode()
+      self.ws.send(part1 + part2, opcode=2)
 
   def check_model(self, schoolnr, logger, test_pred = False):
     while True:
@@ -261,15 +268,19 @@ class c_tfworker:
                 self.cachedict[myindex] = line
               predictions = np.vstack((predictions, line))
           elif tfw_wsurl:
-            self.ws_ts = time()
             outdict = {
               'code' : 'imgl',
               'scho' : e_school,
-              'data' : slice_to_process.tolist(),
             }
-            self.ws.send(zlib.compress(json.dumps(outdict).encode()), opcode=2)
+            part2 = json.dumps(outdict).encode()
+            part1 = len(part2).to_bytes(4, byteorder='big')
+            part3 = slice_to_process.shape[0].to_bytes(4, byteorder='big')
+            self.ws.send(part1 + part2 + part3, opcode=2)
+            for i in range(slice_to_process.shape[0]):
+              self.ws_ts = time()
+              self.ws.send(cv.imencode('.jpg', slice_to_process[i])[1].tobytes(), opcode=2)
             predictions = json.loads(self.ws.recv())
-          else:
+          else: #local GPU
             slice_to_process = np.float32(slice_to_process)/255
             if slice_to_process.shape[0] < tfw_maxblock:
               patch = np.zeros((tfw_maxblock - slice_to_process.shape[0], 

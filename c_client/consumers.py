@@ -789,32 +789,39 @@ class predictionsConsumer(WebsocketConsumer):
     self.authed = False
     self.permitted_schools = set()
     self.user = None
+    self.numberofframes = 0
 
   def receive(self, text_data=None, bytes_data=None):
-    indict=json.loads(zlib.decompress(bytes_data))
-    if indict['code'] == 'imgl':
-      if not self.authed:
-        self.close()
-      if not (indict['scho'] in self.permitted_schools):
-        if access.check('S', indict['scho'], self.user, 'R'):
-          self.permitted_schools.add(indict['scho'])
-          #print('Access approved')
-        else:
-          #print('Access not approved')
+    inbytes = bytes_data
+    if self.numberofframes == 0:
+      numberofbytes = int.from_bytes(inbytes[:4], byteorder='big')
+      indict=json.loads(inbytes[4:4+numberofbytes].decode())
+      if indict['code'] == 'imgl':
+        if not self.authed:
           self.close()
-      imglist = np.array(indict['data'])
-      tfworker.users[self.tf_w_index].fifoin.put([indict['scho'], imglist])
-      predictions = tfworker.users[self.tf_w_index].fifoout.get().tolist()
-      self.send(json.dumps(predictions))
-    elif indict['code'] == 'auth':
-      print(indict)
-      self.user = User.objects.get(username=indict['name'])
-      if self.user.check_password(indict['pass']):
-        self.authed = True
-        #print('Success')
-      if not self.authed:
-        self.close()
-        #print('No success')
+        if not (indict['scho'] in self.permitted_schools):
+          if access.check('S', indict['scho'], self.user, 'R'):
+            self.permitted_schools.add(indict['scho'])
+          else:
+            self.close()
+        self.numberofframes = int.from_bytes(inbytes[4+numberofbytes:8+numberofbytes], byteorder='big')
+        self.imglist = np.empty((0, djconf.getconfigint('tr_xdim', 331), djconf.getconfigint('tr_ydim', 331), 3), np.uint8)
+        self.school = indict['scho']
+      elif indict['code'] == 'auth':
+        self.user = User.objects.get(username=indict['name'])
+        if self.user.check_password(indict['pass']):
+          self.authed = True
+        if not self.authed:
+          self.close()
+    else:
+      frame = cv.imdecode(np.frombuffer(inbytes, dtype=np.uint8), cv.IMREAD_UNCHANGED)
+      frame = np.expand_dims(frame, axis=0)
+      self.imglist = np.vstack((self.imglist, frame))
+      self.numberofframes -= 1
+      if self.numberofframes == 0:
+        tfworker.users[self.tf_w_index].fifoin.put([self.school, self.imglist])
+        predictions = tfworker.users[self.tf_w_index].fifoout.get().tolist()
+        self.send(json.dumps(predictions))
 
   def disconnect(self, close_code):
     tfworker.unregister(self.tf_w_index)
