@@ -182,7 +182,7 @@ class c_eventer(c_device):
   def check_events(self):
     eventdictcopy = self.eventdict.copy()
     for idict in eventdictcopy:
-      if self.eventdict[idict].status < 0:   
+      if (self.eventdict[idict].status < 0) and (self.eventdict[idict].nrofcopies == 0):   
         self.eventdict[idict].unregister()
         if not (self.eventdict[idict].isrecording 
             or self.eventdict[idict].goes_to_school):
@@ -297,38 +297,38 @@ class c_eventer(c_device):
         for i in myframeplusevents['events']:
           if i[0] in self.eventdict:
             item = self.eventdict[i[0]]
-            if item.status == 0:
-              predictions = item.pred_read(max=1.0)
-              if self.nr_of_cond_ed > 0:
-                if self.resolve_rules(self.last_cond_ed, predictions):
-                  colorcode= (0, 255, 0)
-                else:
-                  colorcode= (0, 0, 255)
-                displaylist = [(j, predictions[j]) for j in range(10)]
-                displaylist.sort(key=lambda x: -x[1])
-                cv.rectangle(newimage, rect_btoa(item), colorcode, 5)
-                if item[2] < (self.params['yres'] - item[3]):
-                  y0 = item[3]+20
-                else:
-                  y0 = item[2]-190
-                for j in range(10):
-                  cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
-                    +' - '+str(round(displaylist[j][1],2)), 
-                    (item[0]+2, y0 + j * 20), 
-                    cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
+            predictions = item.pred_read(max=1.0)
+            if self.nr_of_cond_ed > 0:
+              if self.resolve_rules(self.last_cond_ed, predictions):
+                colorcode= (0, 255, 0)
               else:
-                imax = -1
-                pmax = -1
-                for j in range(1,len(predictions)):
-                  if predictions[j] >= 0.0:
-                    if predictions[j] > pmax:
-                      pmax = predictions[j]
-                      imax = j
-                if self.resolve_rules(1, predictions):
-                  cv.rectangle(newimage, rect_btoa(item), (255, 0, 0), 5)
-                  cv.putText(newimage, self.classes_list[imax][:3], (item[0]+10, 
-                    item[2]+30), 
-                    cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
+                colorcode= (0, 0, 255)
+              displaylist = [(j, predictions[j]) for j in range(10)]
+              displaylist.sort(key=lambda x: -x[1])
+              cv.rectangle(newimage, rect_btoa(item), colorcode, 5)
+              if item[2] < (self.params['yres'] - item[3]):
+                y0 = item[3]+20
+              else:
+                y0 = item[2]-190
+              for j in range(10):
+                cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
+                  +' - '+str(round(displaylist[j][1],2)), 
+                  (item[0]+2, y0 + j * 20), 
+                  cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
+            else:
+              imax = -1
+              pmax = -1
+              for j in range(1,len(predictions)):
+                if predictions[j] >= 0.0:
+                  if predictions[j] > pmax:
+                    pmax = predictions[j]
+                    imax = j
+              if self.resolve_rules(1, predictions):
+                cv.rectangle(newimage, rect_btoa(item), (255, 0, 0), 5)
+                cv.putText(newimage, self.classes_list[imax][:3], (item[0]+10, 
+                  item[2]+30), 
+                  cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
+            item.nrofcopies -= 1
         self.put_one((3, newimage, frame[2]))
       else:
         self.frameslist.appendleft(myframeplusevents)
@@ -346,6 +346,7 @@ class c_eventer(c_device):
           frameplusevents['events'].append((idict, eventdictcopy[idict].end))
           eventdictcopy[idict].get_predictions(self.params['school'], 
             logger=self.logger)
+          eventdictcopy[idict].nrofcopies += 1
       self.frameslist.append(frameplusevents)
 
   def resolve_rules(self, reaction, predictions):

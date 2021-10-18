@@ -611,7 +611,7 @@ CREATE TABLE `c_client_setting` (
 
 LOCK TABLES `c_client_setting` WRITE;
 /*!40000 ALTER TABLE `c_client_setting` DISABLE KEYS */;
-INSERT INTO `c_client_setting` VALUES (1,'tr_epochs',0,'1','Training'),(4,'last_model',0,'1','Nothing yet...'),(5,'schoolframespath',0,'~/sftp/school/','...'),(6,'maxtemp',0,'100','Max CPU Temp'),(7,'last_school',0,'2','Nothing yet...'),(8,'tr_xdim',0,'331','...'),(9,'tr_ydim',0,'331','...'),(10,'tpu',0,'Nein','Coral presence'),(11,'gpu',0,'Nein','Geforce presence'),(12,'gpu_sim',0,'0.1','-1 is off'),(13,'logdir',0,'log/','...'),(14,'loglevel',0,'INFO','...'),(15,'basemodelpath',0,'0','...'),(16,'recordingspath',0,'0','Place for videos'),(17,'recordingsurl',0,'http://localhost/vclips/','Url for videos'),(18,'smtp_account',0,'alarm@cam-ai.de','...'),(19,'smtp_password',0,'Grmbl!123_Wmpf','...'),(20,'smtp_email',0,'alarm@cam-ai.de','...'),(21,'smtp_server',0,'smtp.strato.com','...'),(22,'smtp_port',0,'465','...'),(23,'smtp_name',0,'CAM-AI Emailer','...'),(24,'client_url',0,'http://localhost:8000/c_client/','...'),(25,'tfw_savestats',0,'0','seconds'),(26,'tfw_maxblock',0,'8','...'),(27,'tfw_timeout',0,'1','seconds to wait'),(28,'gpu_sim_loading',0,'0','...'),(29,'tfw_wsurl',0,'','For getting predictions'),(30,'tfw_wsname',0,'','For getting predictions'),(31,'tfw_wspass',0,'','For getting predictions');
+INSERT INTO `c_client_setting` VALUES (1,'tr_epochs',0,'1','Training'),(4,'last_model',0,'1','Nothing yet...'),(5,'schoolframespath',0,'~/sftp/school/','...'),(6,'maxtemp',0,'100','Max CPU Temp'),(7,'last_school',0,'2','Nothing yet...'),(8,'tr_xdim',0,'331','...'),(9,'tr_ydim',0,'331','...'),(10,'tpu',0,'Nein','Coral presence'),(11,'gpu',0,'Nein','Geforce presence'),(12,'gpu_sim',0,'0.1','-1 is off'),(13,'logdir',0,'log/','...'),(14,'loglevel',0,'INFO','...'),(15,'basemodelpath',0,'0','...'),(16,'recordingspath',0,'0','Place for videos'),(17,'recordingsurl',0,'http://localhost/vclips/','Url for videos'),(18,'smtp_account',0,'','...'),(19,'smtp_password',0,'','...'),(20,'smtp_email',0,'','...'),(21,'smtp_server',0,'','...'),(22,'smtp_port',0,'465','...'),(23,'smtp_name',0,'CAM-AI Emailer','...'),(24,'client_url',0,'http://localhost:8000/c_client/','...'),(25,'tfw_savestats',0,'0','seconds'),(26,'tfw_maxblock',0,'8','...'),(27,'tfw_timeout',0,'1','seconds to wait'),(28,'gpu_sim_loading',0,'0','...'),(29,'tfw_wsurl',0,'','For getting predictions'),(30,'tfw_wsname',0,'','For getting predictions'),(31,'tfw_wspass',0,'','For getting predictions');
 /*!40000 ALTER TABLE `c_client_setting` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -945,4 +945,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2021-10-11 15:29:12
+-- Dump completed on 2021-10-18 10:50:32

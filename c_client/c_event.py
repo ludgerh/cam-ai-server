@@ -49,6 +49,7 @@ class c_event(list):
     self.goes_to_school = False
     self.status = 0
     self.pred_busy = False
+    self.nrofcopies = 0
 
   def put_first_frame(self, frame, margin, xmax, ymax, classes_list):
     self.tf_w_index = tfworker.register()
