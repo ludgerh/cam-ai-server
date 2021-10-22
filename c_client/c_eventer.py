@@ -301,6 +301,7 @@ class c_eventer(c_device):
         for i in myframeplusevents['events']:
           if (self.eventdict[i[0]].status > -3) and (i[0] in self.eventdict):
             item = self.eventdict[i[0]]
+            itemold = i[2]
             predictions = item.pred_read(max=1.0)
             if self.nr_of_cond_ed > 0:
               if self.resolve_rules(self.last_cond_ed, predictions):
@@ -309,15 +310,15 @@ class c_eventer(c_device):
                 colorcode= (0, 0, 255)
               displaylist = [(j, predictions[j]) for j in range(10)]
               displaylist.sort(key=lambda x: -x[1])
-              cv.rectangle(newimage, rect_btoa(item), colorcode, 5)
-              if item[2] < (self.params['yres'] - item[3]):
-                y0 = item[3]+20
+              cv.rectangle(newimage, rect_btoa(itemold), colorcode, 5)
+              if itemold[2] < (self.params['yres'] - itemold[3]):
+                y0 = itemold[3]+20
               else:
-                y0 = item[2]-190
+                y0 = itemold[2]-190
               for j in range(10):
                 cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
                   +' - '+str(round(displaylist[j][1],2)), 
-                  (item[0]+2, y0 + j * 20), 
+                  (itemold[0]+2, y0 + j * 20), 
                   cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
             else:
               imax = -1
@@ -328,9 +329,9 @@ class c_eventer(c_device):
                     pmax = predictions[j]
                     imax = j
               if self.resolve_rules(1, predictions):
-                cv.rectangle(newimage, rect_btoa(item), (255, 0, 0), 5)
-                cv.putText(newimage, self.classes_list[imax][:3], (item[0]+10, 
-                  item[2]+30), 
+                cv.rectangle(newimage, rect_btoa(itemold), (255, 0, 0), 5)
+                cv.putText(newimage, self.classes_list[imax][:3], (itemold[0]+10, 
+                  itemold[2]+30), 
                   cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
             item.nrofcopies -= 1
         self.put_one((3, newimage, frame[2]))
@@ -347,7 +348,8 @@ class c_eventer(c_device):
     self.merge_events()
     for idict in self.eventdict.copy():
       if ((idict in self.eventdict) and (self.eventdict[idict].status > -1)):
-        frameplusevents['events'].append((idict, self.eventdict[idict].end))
+        frameplusevents['events'].append((idict, self.eventdict[idict].end, self.eventdict[idict][:4]))
+        print(frameplusevents['events'])
         self.eventdict[idict].get_predictions(self.params['school'], 
           logger=self.logger)
         self.eventdict[idict].nrofcopies += 1
