@@ -147,6 +147,7 @@ class c_device(c_base):
     if not (self.type == 'C'):
       if fps is not None:
         self.setparams({'fpsactual' : fps,}, writedb=True)
+
   def run(self, logger=None):
     self.finished = False
     self.running = True

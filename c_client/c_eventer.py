@@ -48,6 +48,7 @@ class c_eventer(c_device):
     self.classes_list=[item.name for item in get_taglist(self.params['school'])]
     self.cachedict = {}
     self.frameslist = deque()
+    self.displaybusy = False
 
   def merge_events(self):
     while True:
@@ -67,7 +68,7 @@ class c_eventer(c_device):
                 self.eventdict[j][3])
               self.eventdict[i].end = max(self.eventdict[i].end, 
                 self.eventdict[j].end)
-              self.eventdict[j].status = -2
+              self.eventdict[j].status = -3
               with self.eventdict[i].frames_lock:
                 with self.eventdict[j].frames_lock:
                   self.eventdict[i].frames += self.eventdict[j].frames
@@ -180,9 +181,9 @@ class c_eventer(c_device):
       self.merge_events()
 
   def check_events(self):
-    eventdictcopy = self.eventdict.copy()
-    for idict in eventdictcopy:
-      if (self.eventdict[idict].status < 0) and (self.eventdict[idict].nrofcopies == 0):   
+    for idict in self.eventdict.copy():
+      if ((self.eventdict[idict].status < 0) 
+          and (self.eventdict[idict].nrofcopies == 0)):   
         self.eventdict[idict].unregister()
         if not (self.eventdict[idict].isrecording 
             or self.eventdict[idict].goes_to_school):
@@ -280,22 +281,25 @@ class c_eventer(c_device):
             self.eventdict[idict].status = -2    
 
   def display_events(self):
+    if self.displaybusy:
+      sleep(0.01)
+      return()
+    self.displaybusy = True
     while len(self.frameslist) > 0:
       myframeplusevents = self.frameslist.popleft()
       all_done = True
       for item in myframeplusevents['events']:
-        if (item[0] in self.eventdict) and (self.eventdict[item[0]].status == 0):
+        if self.eventdict[item[0]].status > -3:
           myevent = self.eventdict[item[0]]
           myevent.get_predictions(self.params['school'], logger=self.logger)
-          if ((myevent.status == 0) 
-              and (not myevent.pred_is_done(ts=item[1]))):
+          if (not myevent.pred_is_done(ts=item[1])):
             all_done = False
             break
       if all_done:
         frame = myframeplusevents['frame']
         newimage = frame[1].copy()
         for i in myframeplusevents['events']:
-          if i[0] in self.eventdict:
+          if (self.eventdict[i[0]].status > -3) and (i[0] in self.eventdict):
             item = self.eventdict[i[0]]
             predictions = item.pred_read(max=1.0)
             if self.nr_of_cond_ed > 0:
@@ -334,20 +338,20 @@ class c_eventer(c_device):
         self.frameslist.appendleft(myframeplusevents)
         sleep(0.01)
         break
+    self.displaybusy = False
 
   def run_one(self, frame):
-    if len(self.frameslist) < 5:
-      frameplusevents = {}
-      frameplusevents['frame'] = frame
-      frameplusevents['events'] = []
-      eventdictcopy = self.eventdict.copy()
-      for idict in eventdictcopy:
-        if eventdictcopy[idict].status > -1:
-          frameplusevents['events'].append((idict, eventdictcopy[idict].end))
-          eventdictcopy[idict].get_predictions(self.params['school'], 
-            logger=self.logger)
-          eventdictcopy[idict].nrofcopies += 1
-      self.frameslist.append(frameplusevents)
+    frameplusevents = {}
+    frameplusevents['frame'] = frame
+    frameplusevents['events'] = []
+    self.merge_events()
+    for idict in self.eventdict.copy():
+      if ((idict in self.eventdict) and (self.eventdict[idict].status > -1)):
+        frameplusevents['events'].append((idict, self.eventdict[idict].end))
+        self.eventdict[idict].get_predictions(self.params['school'], 
+          logger=self.logger)
+        self.eventdict[idict].nrofcopies += 1
+    self.frameslist.append(frameplusevents)
 
   def resolve_rules(self, reaction, predictions):
     if predictions is None:

@@ -232,6 +232,7 @@ def eventer_index(request):
   return(HttpResponse(template.render(context)))
 
 def oneeventer(request, eventernr):
+  print(request.user)
   if access.check('E', eventernr, request.user, 'R'):
     myeventerline = eventer.objects.get(id=eventernr)
     myeventer = c_base.instances['E'][eventernr]
