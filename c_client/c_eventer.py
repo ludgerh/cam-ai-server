@@ -86,6 +86,8 @@ class c_eventer(c_device):
   def take_view_count(self):
     super().take_view_count()
     self.mydetector.take_view_count()
+    if self.view_count == 0:
+      self.frameslist.clear()
 
   def postinit(self):
     super().postinit()
@@ -349,7 +351,6 @@ class c_eventer(c_device):
     for idict in self.eventdict.copy():
       if ((idict in self.eventdict) and (self.eventdict[idict].status > -1)):
         frameplusevents['events'].append((idict, self.eventdict[idict].end, self.eventdict[idict][:4]))
-        print(frameplusevents['events'])
         self.eventdict[idict].get_predictions(self.params['school'], 
           logger=self.logger)
         self.eventdict[idict].nrofcopies += 1
