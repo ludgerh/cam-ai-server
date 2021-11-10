@@ -56,6 +56,7 @@ class c_device(c_base):
     self.type = type
     self.view_count = 0
     self.record_count = 0
+    self.data_count = 0
     self.running = False
     if self.type in {'V', 'D', 'E'}:
       self.inbuffer = c_buffer(getall=False)
@@ -76,25 +77,37 @@ class c_device(c_base):
     self.view_count += 1
     #print('V+++', self.type, self.id, self.view_count)
     if self.type != 'C':
-      self.parent.add_view_count()
+      self.parent.add_data_count()
 
   def take_view_count(self):
     self.view_count = max(0, self.view_count - 1)
     #print('V---', self.type, self.id, self.view_count)
     if self.type != 'C':
-      self.parent.take_view_count()
+      self.parent.take_data_count()
 
   def add_record_count(self):
     self.record_count += 1
-    #print('R+++', self.type, self.id, self.view_count)
+    #print('R+++', self.type, self.id, self.record_count)
     if self.type != 'C':
       self.parent.add_record_count()
 
   def take_record_count(self):
     self.record_count = max(0, self.record_count - 1)
-    #print('R---', self.type, self.id, self.view_count)
+    #print('R---', self.type, self.id, self.record_count)
     if self.type != 'C':
       self.parent.take_record_count()
+
+  def add_data_count(self):
+    self.data_count += 1
+    #print('D+++', self.type, self.id, self.data_count)
+    if self.type != 'C':
+      self.parent.add_data_count()
+
+  def take_data_count(self):
+    self.data_count = max(0, self.data_count - 1)
+    #print('D---', self.type, self.id, self.data_count)
+    if self.type != 'C':
+      self.parent.take_data_count()
 
   def setviewsize(self, sizecode):
 	  self.sizecode = sizecode
@@ -159,7 +172,8 @@ class c_device(c_base):
     self.som = speedometer()
     while self.running:
       while True:
-        if (self.view_count == 0) and (self.record_count == 0) and (self.type != 'C'):
+        if ((self.view_count == 0) and (self.record_count == 0) 
+            and (self.data_count == 0) and (self.type != 'C')):
           sleep(0.01)
         else:
           break

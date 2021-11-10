@@ -101,7 +101,9 @@ class c_detector(c_device):
         recta = rect_btoa(rect)
         cv.rectangle(buffer1, recta, (200), 5)
         if ((recta[2]<=objectmaxsize) and (recta[3]<=objectmaxsize)):
-          if ((self.myeventer.view_count > 0) or (self.myeventer.record_count > 0)):
+          if ((self.myeventer.view_count > 0) 
+              or (self.myeventer.record_count > 0) 
+              or (self.myeventer.data_count > 0)):
             aoi = np.copy(frame[rect[2]:rect[3], rect[0]:rect[1]])
             self.eventbuffer.putframe((3, aoi, frametime, rect[0], rect[1], rect[2], rect[3]))
         else:

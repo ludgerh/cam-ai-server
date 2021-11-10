@@ -131,7 +131,7 @@ class c_cam(c_device):
       return()
     if (timediff <= 180) and (self.getting_newprozess):
       return()
-    if self.view_count <= 0:
+    if (self.view_count == 0) and (self.data_count == 0):
       return()
     if (self.params['repeater'] > 0):
       if not self.repeater_running:
@@ -314,7 +314,7 @@ class c_cam(c_device):
   def run_one(self, dummy):
     thistime = time()
     while True:
-      if (self.view_count > 0) or (self.record_count > 0):
+      if (self.view_count > 0) or (self.data_count > 0) or (self.record_count > 0):
         if self.cam_active:
           if (self.record_count == 0) and (self.ff_proc_2 is not None):
             self.ff_proc_2.stdin.close()

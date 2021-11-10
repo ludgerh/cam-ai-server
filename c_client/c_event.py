@@ -63,8 +63,7 @@ class c_event(list):
     self.append(False)
     self.next_to_send = 0
     self.predictions = np.zeros((0,len(classes_list)))
-    with self.frames_lock:
-      self.frames.append(frame)
+    self.frames.append(frame)
     eventline = event()
     while True:
       try:
@@ -77,8 +76,9 @@ class c_event(list):
   def shrink(self):
     if len(self.frames) > self.next_to_send:
       firstpart = self.frames[:self.next_to_send]
-      secondpart = self.frames[self.next_to_send:]
-      self.frames = firstpart + randomfilter(secondpart, self.maxblock)
+      with self.frames_lock:
+        secondpart = self.frames[self.next_to_send:]
+        self.frames = firstpart + randomfilter(secondpart, self.maxblock)
 
   def pred_read(self, radius=3, max=0.0, ave=0.0, last=0.0):
     result2 = np.zeros((len(classes_list)), np.float32)
@@ -99,9 +99,7 @@ class c_event(list):
 
   def pred_thread(self, logger= None):
     while True:
-      with self.frames_lock:
-        worktodo = len(self.frames) > self.predictions.shape[0]
-      if worktodo:
+      if len(self.frames) > self.predictions.shape[0]:
         newpredictions = tfworker.users[self.tf_w_index].fifoout.get(block=True)
         self.predictions = np.vstack((self.predictions, newpredictions))
       else:
@@ -139,8 +137,7 @@ class c_event(list):
       if self.predictions.shape[0] == 0:
         return(False)
       else:
-        with self.frames_lock:
-          return((self.frames[self.predictions.shape[0] - 1][2]) >= ts)
+        return((self.frames[self.predictions.shape[0] - 1][2]) >= ts)
 
   def p_string(self):
     predline = '['
