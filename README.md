@@ -4,6 +4,8 @@
 
 This is an installation tutorial for a development system of the CAM-AI Server on a RaspBerry Pi 4 with 4 GB of memory and Debian 11 64bit (get it at https://raspi.debian.net/tested-images/). Other configurations are probably possible, but might need some testing and modifications. Raspberry Pi OS does not work. Here we go:
 
+Notiz: Linux Mint 20
+
 1. ####  Creating a new user
 
    It is recommended to create a special user for operating the camera server. In our example this users name will be cam_ai :
@@ -150,7 +152,11 @@ This is an installation tutorial for a development system of the CAM-AI Server o
 
    `pip install channels`
 
-   `pip install mysqlclient`
+   `sudo apt install default-libmysqlclient-dev`
+
+   `sudo apt install build-essential`
+
+   `pip install mysqlclient` 
 
    `pip install pillow`
 

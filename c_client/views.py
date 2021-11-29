@@ -43,6 +43,7 @@ from .c_access import access
 from .c_tfworker import tfworker
 from .c_schools import get_taglist
 from .c_stream_clients import c_stream_dict
+from .c_health import run
 
 #mystreams = c_stream_dict()
 

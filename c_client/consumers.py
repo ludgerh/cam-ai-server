@@ -170,13 +170,13 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
             myslice = imglist[:self.maxblock]
           else:
             myslice = imglist[(i * self.maxblock):((i+1) * self.maxblock)]
-          tfworker.users[self.tf_w_index].fifoin.put([params['school'], myslice])
-          myoutput = tfworker.users[self.tf_w_index].fifoout.get()
+          tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice])
+          myoutput = tfworker.users[self.tf_w_index].fifoout_get()[0]
           predictions = np.append(predictions, myoutput, 0)
       if rest > 0:
         myslice = imglist[(count * self.maxblock):]
-        tfworker.users[self.tf_w_index].fifoin.put([params['school'], myslice])
-        myoutput =  tfworker.users[self.tf_w_index].fifoout.get()
+        tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice])
+        myoutput =  tfworker.users[self.tf_w_index].fifoout_get()[0]
         predictions = np.append(predictions, myoutput, 0)
       outlist['data'] = predictions.tolist()
       if settings.DEBUG:
@@ -819,8 +819,8 @@ class predictionsConsumer(WebsocketConsumer):
       self.imglist = np.vstack((self.imglist, frame))
       self.numberofframes -= 1
       if self.numberofframes == 0:
-        tfworker.users[self.tf_w_index].fifoin.put([self.school, self.imglist])
-        predictions = tfworker.users[self.tf_w_index].fifoout.get().tolist()
+        tfworker.users[self.tf_w_index].fifoin_put([self.school, self.imglist])
+        predictions = tfworker.users[self.tf_w_index].fifoout_get()[0].tolist()
         self.send(json.dumps(predictions))
 
   def disconnect(self, close_code):

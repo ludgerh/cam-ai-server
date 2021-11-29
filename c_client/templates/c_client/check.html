@@ -134,7 +134,6 @@ $('#cball').change(function() {
   updateimages();
 });
 
-{% if user.is_superuser %}
 $('#button1').click(function() {
   TrDBUtilSocket.sendandwait({
     'command' : 'checkall',
@@ -148,6 +147,7 @@ $('#button1').click(function() {
   })
   .catch(err => {console.log(err);});
 });
+{% if user.is_superuser %}
 $('#button2').click(function() {
   if ($('#cbkiller').prop('checked')) {
     TrDBUtilSocket.sendandwait({

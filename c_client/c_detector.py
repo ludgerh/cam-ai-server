@@ -48,7 +48,7 @@ class c_detector(c_device):
       self.background = np.float32(frame)
       self.buffer = frame
       self.firstdetect = False
-    objectmaxsize = round(min(self.buffer.shape[0],self.buffer.shape[1])*self.params['max_size'])
+    objectmaxsize = round(max(self.buffer.shape[0],self.buffer.shape[1])*self.params['max_size'])
     buffer1 = cv.absdiff(self.buffer, frame)
     buffer1 = cv.split(buffer1)
     buffer2 = cv.max(buffer1[0], buffer1[1])
@@ -70,7 +70,7 @@ class c_detector(c_device):
     buffer1 = cv.cvtColor(buffer1, cv.COLOR_GRAY2BGR)
     buffer2 = cv.cvtColor(buffer2, cv.COLOR_GRAY2BGR) 
     buffer4 = cv.cvtColor(buffer3, cv.COLOR_GRAY2BGR)
-    buffer1 = cv.split(buffer1)
+    buffer1 = list(cv.split(buffer1))
     buffer1[1] = buffer1[1] * 0
     buffer1 = cv.merge(buffer1)
     buffer1 = cv.addWeighted(buffer4, 0.2, buffer1, 1, 0)

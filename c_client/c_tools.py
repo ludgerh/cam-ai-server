@@ -76,9 +76,9 @@ def run_with_log(executor, task, logname):
     logger = getLogger(logname)
     logger.setLevel(DEBUG)
     fh = LogFileHandler(djconf.getconfig('logdir')+logname+'.log')
-    fh.setLevel(logdict[djconf.getconfig('loglevel')])
+    fh.setLevel(logdict[djconf.getconfig('loglevel','INFO')])
     ch = LogStreamHandler()
-    ch.setLevel(INFO)
+    ch.setLevel(logdict[djconf.getconfig('loglevel','INFO')])
     formatter = Formatter("{asctime} [{levelname:8}] {message}",
       "%d.%m.%Y %H:%M:%S","{")
     ch.setFormatter(formatter)

@@ -12,7 +12,6 @@
 # Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 from time import time, sleep
-from threading import Lock
 from shutil import copyfile
 from os import remove
 from subprocess import run
@@ -39,7 +38,6 @@ class c_eventer(c_device):
     self.detectbuffer = c_buffer(getall=True)
     self.eventdict = {}
     self.eventcount = 0
-    self.ev_lock = Lock()
     self.nr_of_cond_ed = 0
     self.last_cond_ed = 0
     self.frame_ts = 0
@@ -48,16 +46,17 @@ class c_eventer(c_device):
     self.classes_list=[item.name for item in get_taglist(self.params['school'])]
     self.cachedict = {}
     self.frameslist = deque()
-    self.displaybusy = False
+    self.display_busy = False
+    self.check_busy = False
     self.display_ts = 0
     self.buffer_ts = time()
 
   def merge_events(self):
     while True:
       changed = False
-      for i in self.eventdict:
+      for i in self.eventdict.copy():
         if self.eventdict[i].status == 0:
-          for j in self.eventdict:
+          for j in self.eventdict.copy():
             if ((j > i) and (self.eventdict[j].status == 0) 
                 and hasoverlap(self.eventdict[i], self.eventdict[j])):
               self.eventdict[i][0] = min(self.eventdict[i][0], 
@@ -71,8 +70,8 @@ class c_eventer(c_device):
               self.eventdict[i].end = max(self.eventdict[i].end, 
                 self.eventdict[j].end)
               self.eventdict[j].status = -3
-              with self.eventdict[i].frames_lock:
-                self.eventdict[i].frames += self.eventdict[j].frames
+              self.eventdict[j].nrofcopies = 0
+              self.eventdict[i].merge_frames(self.eventdict[j])
               self.eventdict[i].shrink()
               self.eventdict[j].isrecording = False
               self.eventdict[j].goes_to_school = False
@@ -139,24 +138,22 @@ class c_eventer(c_device):
       self.frame_ts = frame[2]
       found = None
 
-      with self.ev_lock:
-        for idict in self.eventdict:
-          if ((self.eventdict[idict].end > (frame[2] - 
-              self.params['event_time_gap']))
-            and hasoverlap((frame[3]-margin, frame[4]+margin, 
-              frame[5]-margin, frame[6]+margin), self.eventdict[idict])
-            and (self.eventdict[idict].status == 0)):
-            found = self.eventdict[idict]
-            break
+      for idict in self.eventdict.copy():
+        if ((self.eventdict[idict].end > (frame[2] - 
+            self.params['event_time_gap']))
+          and hasoverlap((frame[3]-margin, frame[4]+margin, 
+            frame[5]-margin, frame[6]+margin), self.eventdict[idict])
+          and (self.eventdict[idict].status == 0)):
+          found = self.eventdict[idict]
+          break
       if found is None:
         myevent = c_event()
         myevent.put_first_frame(frame, self.params['margin'], 
           self.params['xres']-1, self.params['yres']-1, self.classes_list)
-        with self.ev_lock:
-          self.eventdict[self.eventcount] = myevent
-          self.eventcount += 1
+        self.eventdict[self.eventcount] = myevent
+        self.eventcount += 1
       else: 
-        s_factor = 1.0 # Maybe user changeable later
+        s_factor = 0.1 # Maybe user changeable later: 0.0 -> No Shrinking 1.0 50%
         if (frame[3] - margin) <= found[0]:
           found[0] = max(0, frame[3] - margin)
         else:
@@ -178,12 +175,14 @@ class c_eventer(c_device):
           found[3] = round(((frame[6] + margin) * s_factor + found[3]) 
             / (s_factor+1.0))
         found.end = frame[2]
-        found.frames.append(frame)
+        found.add_frame(frame)
         found.shrink()
-        found.get_predictions(self.params['school'], logger=self.logger)
       self.merge_events()
 
   def check_events(self):
+    if self.check_busy:
+      return()
+    self.check_busy = True
     for idict in self.eventdict.copy():
       if ((self.eventdict[idict].status <= -2) 
           and (self.eventdict[idict].nrofcopies == 0)): 
@@ -196,16 +195,12 @@ class c_eventer(c_device):
               break
             except OperationalError:
               connection.close()
-        with self.ev_lock:
-          del self.eventdict[idict]
+        del self.eventdict[idict]
       else:
-        oldnumberofframes = len(self.eventdict[idict].frames)
-        self.eventdict[idict].get_predictions(self.params['school'], 
-          logger=self.logger)
-        #print('*** ',idict,' ***', self.eventdict[idict].end, time()-self.params['event_time_gap'])
-        if (self.eventdict[idict].end < (time() - 
-            self.params['event_time_gap'])):
-          self.eventdict[idict].wait_for_pred_done(limit = oldnumberofframes)
+        self.eventdict[idict].get_predictions(self.params['school'], logger=self.logger)
+        if ((self.eventdict[idict].end < (time() - self.params['event_time_gap'])) and (not self.eventdict[idict].ts)):
+          self.eventdict[idict].ts  = self.eventdict[idict].end
+        if self.eventdict[idict].ts and self.eventdict[idict].pred_is_done(ts = self.eventdict[idict].ts):
           predictions = self.eventdict[idict].pred_read(radius=10, max=1.0)
           self.eventdict[idict].goes_to_school = self.resolve_rules(2, 
             predictions)
@@ -221,7 +216,6 @@ class c_eventer(c_device):
               self.params['school'], self.logger)
           if (self.eventdict[idict].goes_to_school 
               or self.eventdict[idict].isrecording):
-            #print('+++++', self.eventdict[idict].isrecording, self.eventdict[idict].goes_to_school)
             savename = ''
             if self.eventdict[idict].isrecording:
               if ((self.parent.latest_ready_video() is not None) 
@@ -284,24 +278,28 @@ class c_eventer(c_device):
               self.eventdict[idict].save(self.params['school'], 
                 self.id, self.params['name'], 
                 self.eventdict[idict].goes_to_school, to_email, savename)
-          self.eventdict[idict].status = min(-2, self.eventdict[idict].status)      
+          self.eventdict[idict].status = min(-2, self.eventdict[idict].status)    
+    self.check_busy = False  
 
 
   def display_events(self):
+    #if (self.display_busy or (self.view_count == 0)):
+    if self.display_busy:
+      return()
+    self.display_busy = True
     if self.view_count == 0:
-      sleep(0.01)
+      self.frameslist.clear()
+      for i in self.eventdict:
+        self.eventdict[i].nrofcopies = 0
+        self.eventdict[i].status = -2
+      self.display_busy = False
       return()
-    if self.displaybusy:
-      sleep(0.01)
-      return()
-    self.displaybusy = True
     while len(self.frameslist) > 0:
       myframeplusevents = self.frameslist.popleft()
       all_done = True
       for item in myframeplusevents['events']:
-        if self.eventdict[item[0]].status >= -2:
+        if (item[0] in self.eventdict) and (self.eventdict[item[0]].status >= -2):
           myevent = self.eventdict[item[0]]
-          myevent.get_predictions(self.params['school'], logger=self.logger)
           if (not myevent.pred_is_done(ts=item[1])):
             all_done = False
             break
@@ -314,59 +312,57 @@ class c_eventer(c_device):
         self.buffer_ts = frame[2]
         self.display_ts = time()
         for i in myframeplusevents['events']:
-          if (self.eventdict[i[0]].status >= -2) and (i[0] in self.eventdict):
+          if i[0] in self.eventdict:
             item = self.eventdict[i[0]]
-            itemold = i[2]
-            predictions = item.pred_read(max=1.0)
-            if self.nr_of_cond_ed > 0:
-              if self.resolve_rules(self.last_cond_ed, predictions):
-                colorcode= (0, 255, 0)
+            if self.eventdict[i[0]].status >= -2:
+              itemold = i[2]
+              predictions = item.pred_read(max=1.0)
+              if self.nr_of_cond_ed > 0:
+                if self.resolve_rules(self.last_cond_ed, predictions):
+                  colorcode= (0, 255, 0)
+                else:
+                  colorcode= (0, 0, 255)
+                displaylist = [(j, predictions[j]) for j in range(10)]
+                displaylist.sort(key=lambda x: -x[1])
+                cv.rectangle(newimage, rect_btoa(itemold), colorcode, 5)
+                if itemold[2] < (self.params['yres'] - itemold[3]):
+                  y0 = itemold[3]+20
+                else:
+                  y0 = itemold[2]-190
+                for j in range(10):
+                  cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
+                    +' - '+str(round(displaylist[j][1],2)), 
+                    (itemold[0]+2, y0 + j * 20), 
+                    cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
               else:
-                colorcode= (0, 0, 255)
-              displaylist = [(j, predictions[j]) for j in range(10)]
-              displaylist.sort(key=lambda x: -x[1])
-              cv.rectangle(newimage, rect_btoa(itemold), colorcode, 5)
-              if itemold[2] < (self.params['yres'] - itemold[3]):
-                y0 = itemold[3]+20
-              else:
-                y0 = itemold[2]-190
-              for j in range(10):
-                cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
-                  +' - '+str(round(displaylist[j][1],2)), 
-                  (itemold[0]+2, y0 + j * 20), 
-                  cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
-            else:
-              imax = -1
-              pmax = -1
-              for j in range(1,len(predictions)):
-                if predictions[j] >= 0.0:
-                  if predictions[j] > pmax:
-                    pmax = predictions[j]
-                    imax = j
-              if self.resolve_rules(1, predictions):
-                cv.rectangle(newimage, rect_btoa(itemold), (255, 0, 0), 5)
-                cv.putText(newimage, self.classes_list[imax][:3], (itemold[0]+10, 
-                  itemold[2]+30), 
-                  cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
-            item.nrofcopies -= 1
+                imax = -1
+                pmax = -1
+                for j in range(1,len(predictions)):
+                  if predictions[j] >= 0.0:
+                    if predictions[j] > pmax:
+                      pmax = predictions[j]
+                      imax = j
+                if self.resolve_rules(1, predictions):
+                  cv.rectangle(newimage, rect_btoa(itemold), (255, 0, 0), 5)
+                  cv.putText(newimage, self.classes_list[imax][:3], (itemold[0]+10, 
+                    itemold[2]+30), 
+                    cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
+              item.nrofcopies -= 1
         self.put_one((3, newimage, frame[2]))
       else:
         self.frameslist.appendleft(myframeplusevents)
         sleep(0.01)
         break
-    self.displaybusy = False
+    self.display_busy = False
 
   def run_one(self, frame):
-    if (self.view_count > 0) and (len(self.frameslist) < max(10.0 * self.params['fpsactual'], 10)):
+    if self.view_count > 0:
       frameplusevents = {}
       frameplusevents['frame'] = frame
       frameplusevents['events'] = []
-      self.merge_events()
       for idict in self.eventdict.copy():
         if ((idict in self.eventdict) and (self.eventdict[idict].status == 0)):
           frameplusevents['events'].append((idict, self.eventdict[idict].end, self.eventdict[idict][:4]))
-          self.eventdict[idict].get_predictions(self.params['school'], 
-            logger=self.logger)
           self.eventdict[idict].nrofcopies += 1
       self.frameslist.append(frameplusevents)
 

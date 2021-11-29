@@ -18,7 +18,8 @@ from datetime import datetime
 from random import randint
 from os import path, makedirs
 from concurrent import futures
-from time import sleep
+from time import sleep, time
+from collections import OrderedDict
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import smtplib, ssl
@@ -41,7 +42,6 @@ class c_event(list):
     self.pred_ave = None
     self.xdim = djconf.getconfigint('xdim', 331)
     self.ydim = djconf.getconfigint('ydim', 331)
-    self.frames = []
     self.maxblock = djconf.getconfigint('tfw_maxblock', 8)
     self.number_of_frames = djconf.getconfigint('frames_event', 32)
     self.thread = None
@@ -50,6 +50,7 @@ class c_event(list):
     self.status = 0
     self.pred_busy = False
     self.nrofcopies = 0
+    self.ts = None
 
   def put_first_frame(self, frame, margin, xmax, ymax, classes_list):
     self.tf_w_index = tfworker.register()
@@ -61,9 +62,9 @@ class c_event(list):
     self.append(max(0, frame[5] - margin))
     self.append(min(ymax, frame[6] + margin))
     self.append(False)
-    self.next_to_send = 0
     self.predictions = np.zeros((0,len(classes_list)))
-    self.frames.append(frame)
+    self.frames = OrderedDict([(0, [frame, None])])
+    self.framescount = 1
     eventline = event()
     while True:
       try:
@@ -73,22 +74,37 @@ class c_event(list):
         connection.close()
     self.id =  event.objects.latest('id').id
 
+  def add_frame(self, frame):
+    with self.frames_lock:
+      self.frames[self.framescount] = [frame, None]
+      self.framescount += 1
+
   def shrink(self):
-    if len(self.frames) > self.next_to_send:
-      firstpart = self.frames[:self.next_to_send]
-      with self.frames_lock:
-        secondpart = self.frames[self.next_to_send:]
-        self.frames = firstpart + randomfilter(secondpart, self.maxblock)
+    existing = list((x for x in self.frames.copy() if self.frames[x][1] is None))
+    staying = randomfilter(self.maxblock, existing)[0]
+    for x in existing:
+      if not(x in staying):
+        with self.frames_lock:
+          del self.frames[x]
+
+  def merge_frames(self, the_other_one):
+    with self.frames_lock:
+      for i in the_other_one.frames.copy():
+        self.frames[i + self.framescount] = the_other_one.frames[i]
+      self.frames = OrderedDict(sorted(self.frames.items(), key=lambda x: x[1][0][2]))
+      self.framescount = self.framescount + the_other_one.framescount
 
   def pred_read(self, radius=3, max=0.0, ave=0.0, last=0.0):
     result2 = np.zeros((len(classes_list)), np.float32)
-    if self.predictions.shape[0] <= 0:
-      return(result2)
-    else:
+    with self.frames_lock:
+      existing = list((x for x in self.frames if self.frames[x][1] is not None))
+    if existing:
+      list_for_stack = [self.frames[x][1] for x in existing]
+      predictions = np.vstack(list_for_stack)
       if radius == 0:
-        result1 = self.predictions[:]
+        result1 = predictions
       else:
-        result1 = np_mov_avg(self.predictions, radius)
+        result1 = np_mov_avg(predictions, radius)
       if max != 0:
         result2 += np.max(result1, axis=0) * max
       if ave != 0:
@@ -96,48 +112,45 @@ class c_event(list):
       if last != 0:
         result2 += result1[-1] * last
       return(np.clip(result2, 0.0, 1.0))
+    else:
+      return(result2)
 
   def pred_thread(self, logger= None):
     while True:
       if len(self.frames) > self.predictions.shape[0]:
-        newpredictions = tfworker.users[self.tf_w_index].fifoout.get(block=True)
-        self.predictions = np.vstack((self.predictions, newpredictions))
+        newpredictions = tfworker.users[self.tf_w_index].fifoout_get(block=True)
+        for i in range(newpredictions[0].shape[0]):
+          self.frames[newpredictions[1][i]][1] = newpredictions[0][i]
       else:
         break
 
   def get_predictions(self, myschool, logger=None):
     if not self.pred_busy:
       self.pred_busy = True
-      if len(self.frames) > self.next_to_send:
-        pred_length = len(self.frames)
-        imglist = np.empty((0, self.xdim, self.ydim, 3), np.uint8)
-        for i in range(self.next_to_send, pred_length):
-          np_image = cv.resize(self.frames[i][1],(self.xdim, self.ydim))
-          np_image = np.expand_dims(np_image, axis=0)
-          imglist = np.append(imglist, np_image, 0)
-        self.next_to_send = pred_length
-        if self.tf_w_index is not None:
-          tfworker.users[self.tf_w_index].fifoin.put([myschool, imglist])
-          if (self.thread is None) or (self.thread.done()):
-            self.thread = e.submit(self.pred_thread, logger)
+      with self.frames_lock:
+        existing = list((x for x in self.frames if self.frames[x][1] is None))
+      if existing:
+        with self.frames_lock:
+          imglist = np.empty((0, self.xdim, self.ydim, 3), np.uint8)
+          for i in existing:
+            np_image = cv.resize(self.frames[i][0][1],(self.xdim, self.ydim))
+            np_image = np.expand_dims(np_image, axis=0)
+            imglist = np.append(imglist, np_image, 0)
+          if self.tf_w_index is not None:
+            tfworker.users[self.tf_w_index].fifoin_put([myschool, (imglist, existing)])
+            if (self.thread is None) or (self.thread.done()):
+              self.thread = e.submit(self.pred_thread, logger)
       self.pred_busy = False
-  
-  def wait_for_pred_done(self, limit = None):
-    if limit is None:
-      while len(self.frames) > self.predictions.shape[0]:
-        sleep(0.01)
-    else:
-      while limit > self.predictions.shape[0]:
-        sleep(0.01)
 
-  def pred_is_done(self, ts = None):
-    if ts is None:
-      return(len(self.frames) == self.predictions.shape[0])
-    else:
-      if self.predictions.shape[0] == 0:
-        return(False)
-      else:
-        return((self.frames[self.predictions.shape[0] - 1][2]) >= ts)
+  def pred_is_done(self, ts):
+    result = True
+    with self.frames_lock:
+      framescopy = self.frames.copy()
+    for item in framescopy.items():
+      if (item[1][0][2] <= ts) and (item[1][1] is None):
+        result = False
+        break
+    return(result)
 
   def p_string(self):
     predline = '['
@@ -149,9 +162,11 @@ class c_event(list):
     return(predline+']')
 
   def frames_filter(self, outlength):
-    result = self.frames[:self.predictions.shape[0]]
+    with self.frames_lock:
+      existing = list((x for x in self.frames if self.frames[x][1] is not None))
+    result = [self.frames[x][0] for x in existing]
+    predlist = [self.frames[x][1].tolist() for x in existing]
     if len(result) > outlength:
-      predlist = self.predictions.tolist()
       sortindex = list(range(len(result)))
       sortindex.sort(key=lambda item: max(predlist[item][1:]), reverse=True)
       sortindex = sortindex[:outlength]

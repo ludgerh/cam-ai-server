@@ -206,12 +206,25 @@ def uniquename(pathname, filename, extension):
     counter = counter+1
   return(filename+'.'+extension)
 
-def randomfilter(inlist, outlength):
-  if len(inlist) > outlength:
-    randIndex = sample(range(len(inlist)), outlength)
+def randomfilter(outlength, *args):
+  arglist = list(args)
+  if len(arglist[0]) > outlength:
+    randIndex = sample(range(len(args[0])), outlength)
     randIndex.sort()
-    inlist = [inlist[i] for i in randIndex]
-  return(inlist)
+    for i in range(len(arglist)):
+      if type(arglist[i]) is list:
+        arglist[i] = [arglist[i][j] for j in randIndex]
+      elif isinstance(arglist[i], np.ndarray):
+        print('+++', arglist[i].shape[0])
+        print('!!!', len(randIndex))
+        output = np.empty((0, arglist[i].shape[1]), arglist[i].dtype)
+        for j in randIndex:
+          if j < arglist[i].shape[0]:
+            print(output.shape, arglist[i].shape)
+            output = np.vstack((output, arglist[i][j]))
+        arglist[i] = output
+        print('---', arglist[i].shape[0])
+  return(arglist)
 
 def update_from_dict(instance, attrs, commit=True):
   for attr, val in attrs.items():
