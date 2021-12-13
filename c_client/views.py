@@ -58,11 +58,14 @@ skipinit = False
 if skipinit:
   print('***** Initialization in views.py disabled ! *****')
 else:
+  run_with_log(executor, tfworker.run1, 'tfworker1')
+  run_with_log(executor, tfworker.run2, 'tfworker2')
+
+  while (not tfworker.is_ready):
+    sleep(1.0)
+
   items_to_start = []
   items_to_postinit = []
-
-  items_to_start.append((tfworker.run1, 'tfworker1'))	
-  items_to_start.append((tfworker.run2, 'tfworker2'))	
   
   for line in cam.objects.filter(active=True):
     mycam = c_cam(line.id)

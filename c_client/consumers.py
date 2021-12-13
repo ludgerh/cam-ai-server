@@ -71,19 +71,27 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
 
   @database_sync_to_async
   def getimagelist(self, idxs, is_school):
-    imglist = np.empty((0,self.xdim, self.ydim, 3), np.uint8)
+    imglist = None
     for item in idxs:
       try:
         if is_school:
-	        frame = event_frame.objects.get(id=item)
-	        imagepath = djconf.getconfig('schoolframespath')+frame.name
+          frame = event_frame.objects.get(id=item)
+          imagepath = djconf.getconfig('schoolframespath')+frame.name
+          if imglist is None:
+            myevent = event.objects.get(id=frame.event.id)
+            xdim = tfworker.allmodels[myevent.school.id]['xdim']
+            ydim = tfworker.allmodels[myevent.school.id]['ydim']
         else:
-	        frame = trainframe.objects.get(id=item)
-	        mymodel = school.objects.get(id=frame.school)
-	        imagepath = mymodel.dir+frame.name
+          frame = trainframe.objects.get(id=item)
+          if imglist is None:
+            mymodel = school.objects.get(id=frame.school)
+            xdim = tfworker.allmodels[mymodel.id]['xdim']
+            ydim = tfworker.allmodels[mymodel.id]['ydim']
+          imagepath = mymodel.dir+frame.name
+        if imglist is None:
+          imglist = np.empty((0, xdim, ydim, 3), np.uint8)
         np_image = Image.open(imagepath)
-        np_image = cv.resize(np.array(np_image),
-          (djconf.getconfigint('tr_xdim', 331), djconf.getconfigint('tr_ydim', 331)))
+        np_image = cv.resize(np.array(np_image), (xdim, ydim))
         np_image = np.expand_dims(np_image, axis=0)
         imglist = np.append(imglist, np_image, 0)
       except FileNotFoundError:
@@ -134,17 +142,17 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
 
       if params['cbnot']:
         if not params['cbchecked']:
-	        filterdict['checked'] = 0
+          filterdict['checked'] = 0
       else:
         if params['cbchecked']:
-	        filterdict['checked'] = 1
+          filterdict['checked'] = 1
         else:
-	        filterdict['checked'] = -1 #Never
+          filterdict['checked'] = -1 #Never
       if params['class'] == -2:
         pass
       elif params['class'] == -1:
         for i in range(0,10):
-	        filterdict['c'+str(i)] = 0
+          filterdict['c'+str(i)] = 0
       else:
         filterdict['c'+str(params['class'])] = 1
       outlist['data'] = await self.gettrainimages(filterdict)
@@ -195,7 +203,7 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
         pass
       elif params['class'] == -1:
         for i in range(0,len(classes_list)):
-	        filterdict['c'+str(i)] = 0
+          filterdict['c'+str(i)] = 0
       else:
         filterdict['c'+str(params['class'])] = 1
       outlist['data'] = await self.checkall(filterdict)
@@ -209,7 +217,7 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
         pass
       elif params['class'] == -1:
         for i in range(0,10):
-	        filterdict['c'+str(i)] = 0
+          filterdict['c'+str(i)] = 0
       else:
         filterdict['c'+str(params['class'])] = 1
       filterdict['checked'] = 1
@@ -219,8 +227,6 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
       await self.send(json.dumps(outlist))
 
     elif params['command'] == 'register_ai':
-      self.xdim = djconf.getconfigint('tr_xdim', 331)
-      self.ydim = djconf.getconfigint('tr_ydim', 331)
       self.tf_w_index = tfworker.register()
       outlist['data'] = 'OK'
       if settings.DEBUG:
@@ -805,8 +811,10 @@ class predictionsConsumer(WebsocketConsumer):
           else:
             self.close()
         self.numberofframes = int.from_bytes(inbytes[4+numberofbytes:8+numberofbytes], byteorder='big')
-        self.imglist = np.empty((0, djconf.getconfigint('tr_xdim', 331), djconf.getconfigint('tr_ydim', 331), 3), np.uint8)
         self.school = indict['scho']
+        xdim = tfworker.allmodels[self.school]['xdim']
+        ydim = tfworker.allmodels[self.school]['ydim']
+        self.imglist = np.empty((0, xdim, ydim, 3), np.uint8)
       elif indict['code'] == 'auth':
         self.user = User.objects.get(username=indict['name'])
         if self.user.check_password(indict['pass']):

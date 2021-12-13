@@ -40,8 +40,8 @@ class c_event(list):
     self.frames_lock = Lock()
     self.pred_max = None
     self.pred_ave = None
-    self.xdim = djconf.getconfigint('xdim', 331)
-    self.ydim = djconf.getconfigint('ydim', 331)
+    self.xdim = None
+    self.ydim = None
     self.maxblock = djconf.getconfigint('tfw_maxblock', 8)
     self.number_of_frames = djconf.getconfigint('frames_event', 32)
     self.thread = None
@@ -51,6 +51,7 @@ class c_event(list):
     self.pred_busy = False
     self.nrofcopies = 0
     self.ts = None
+    self.savename = ''
 
   def put_first_frame(self, frame, margin, xmax, ymax, classes_list):
     self.tf_w_index = tfworker.register()
@@ -62,7 +63,6 @@ class c_event(list):
     self.append(max(0, frame[5] - margin))
     self.append(min(ymax, frame[6] + margin))
     self.append(False)
-    self.predictions = np.zeros((0,len(classes_list)))
     self.frames = OrderedDict([(0, [frame, None])])
     self.framescount = 1
     eventline = event()
@@ -117,20 +117,23 @@ class c_event(list):
 
   def pred_thread(self, logger= None):
     while True:
-      if len(self.frames) > self.predictions.shape[0]:
+      if tfworker.users[self.tf_w_index].fifoout.empty():
+        sleep(0.01)
+      else:
         newpredictions = tfworker.users[self.tf_w_index].fifoout_get(block=True)
         for i in range(newpredictions[0].shape[0]):
           self.frames[newpredictions[1][i]][1] = newpredictions[0][i]
-      else:
-        break
 
   def get_predictions(self, myschool, logger=None):
     if not self.pred_busy:
       self.pred_busy = True
+      if self.xdim is None:
+        self.xdim = tfworker.allmodels[myschool]['xdim']
+      if self.ydim is None:
+        self.ydim = tfworker.allmodels[myschool]['ydim']
       with self.frames_lock:
         existing = list((x for x in self.frames if self.frames[x][1] is None))
-      if existing:
-        with self.frames_lock:
+        if existing:
           imglist = np.empty((0, self.xdim, self.ydim, 3), np.uint8)
           for i in existing:
             np_image = cv.resize(self.frames[i][0][1],(self.xdim, self.ydim))

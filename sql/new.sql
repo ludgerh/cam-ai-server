@@ -574,6 +574,7 @@ CREATE TABLE `c_client_school` (
   `l_rate_max` varchar(20) NOT NULL,
   `l_rate_min` varchar(20) NOT NULL,
   `e_school` int(11) NOT NULL,
+  `model_type` varchar(50) NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -584,7 +585,7 @@ CREATE TABLE `c_client_school` (
 
 LOCK TABLES `c_client_school` WRITE;
 /*!40000 ALTER TABLE `c_client_school` DISABLE KEYS */;
-INSERT INTO `c_client_school` VALUES (1,'Standard',0,'~/sftp/c_model_1/',500,'2021-03-12 12:50:04.337680',1,513,513,0,3,0,1,'-1','1e-6',4);
+INSERT INTO `c_client_school` VALUES (1,'Standard',0,'~/sftp/c_model_1/',500,'2021-03-12 12:58:59.783268',1,0,0,1,1,1,1,'-1','1e-6',1,'cam-ai_model');
 /*!40000 ALTER TABLE `c_client_school` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -945,4 +946,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2021-10-18 10:50:32
+-- Dump completed on 2021-12-11 18:29:20

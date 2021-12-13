@@ -71,7 +71,8 @@ class school(models.Model):
   load_model_nr = models.SmallIntegerField(default=1)
   l_rate_min = models.CharField(max_length=20, default = '-1')
   l_rate_max = models.CharField(max_length=20, default = '-1')
-  e_school = models.IntegerField(default=1) 
+  e_school = models.IntegerField(default=1)
+  model_type = models.CharField(max_length=50, default = 'cam-ai_model')
 
   def __str__(self):
     return(self.name)

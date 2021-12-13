@@ -21,7 +21,7 @@ from statistics import mean
 from time import time
 from random import seed, uniform, shuffle, sample, choice
 from sys import platform
-from math import ceil, pi
+from math import ceil, pi, sqrt
 import numpy as np
 from shutil import copyfile
 
@@ -43,6 +43,7 @@ from tensorflow.keras import backend as K
 
 class sql_sequence(Sequence):
   def __init__(self, sqlresult, xdim, ydim, 
+      normalisation=None,
       batch_size=32, 
       class_weights=None, 
       model=None,
@@ -60,6 +61,7 @@ class sql_sequence(Sequence):
     self.batch_size = batch_size
     self.xdim = xdim
     self.ydim = ydim
+    self.normalisation = normalisation
     self.class_weights = class_weights
     self.model = model
     self.save_to_dir=save_to_dir
@@ -81,27 +83,40 @@ class sql_sequence(Sequence):
     xdata = []
     ydata = np.empty(shape=(len(batch_slice), len(classes_list)))
 
-    averages = []
+    if (self.rotation_range or self.width_shift_range or self.height_shift_range 
+      or self.shear_range or self.zoom_range):
+      averages = []
+    else:
+      averages = None
     for i in range(len(batch_slice)):
       bmpdata = tf.io.read_file(batch_slice[i][1])
       bmpdata = tf.io.decode_bmp(bmpdata, channels=3)
       bmpdata = tf.image.resize(bmpdata, [self.xdim,self.ydim])
-      bmpdata = tf.math.truediv(bmpdata,255.0)
+      if self.normalisation:
+        bmpdata = tf.math.truediv(bmpdata, self.normalisation)
       if self.brightness_range > 0:
         bmpdata = tf.image.random_brightness(bmpdata, self.brightness_range)
-      bmpdata = tf.clip_by_value(bmpdata, 0.00001, 1.0)
-      average = tf.math.reduce_mean(bmpdata, (0, 1))
-      average = [average] * self.ydim
-      average = tf.stack(average)
-      average = [average] * self.xdim
-      average = tf.stack(average)
+      if self.normalisation:
+        bmpdata = tf.clip_by_value(bmpdata, 0.00001, 255 / self.normalisation)
+      else:
+        bmpdata = tf.clip_by_value(bmpdata, 0.00001, 255)
+      if averages is not None:
+        average = tf.math.reduce_mean(bmpdata, (0, 1))
+        average = [average] * self.ydim
+        average = tf.stack(average)
+        average = [average] * self.xdim
+        average = tf.stack(average)
+        averages.append(average)
       xdata.append(bmpdata)
-      averages.append(average)
       for j in range(len(classes_list)):
         ydata[i][j] = round(batch_slice[i][j+2])
     xdata = tf.stack(xdata)
     ydata = tf.convert_to_tensor(ydata)
-    averagedata = tf.stack(averages)
+    if averages is not None:
+      averagedata = tf.stack(averages)
+    else:
+      averagedata = None
+
     if self.class_weights is not None:
       wdata = np.zeros(shape=(len(batch_slice)))
 
@@ -124,50 +139,54 @@ class sql_sequence(Sequence):
       xdata = tf.image.random_flip_up_down(xdata)
     if self.rotation_range > 0:
       angles = [uniform(self.rotation_range*-1,self.rotation_range) * pi / 180 
-	      for x in range(len(batch_slice))]
+        for x in range(len(batch_slice))]
       xdata = tfa.image.rotate(xdata, angles)
     if (self.width_shift_range > 0) or (self.height_shift_range > 0):
       matrixes = []
       for x in range(len(batch_slice)):
-	      xshift = uniform(self.width_shift_range*-1,
-		      self.width_shift_range)*self.xdim
-	      yshift = uniform(self.height_shift_range*-1,
-		      self.height_shift_range)*self.ydim
-	      matrix = [1,0,xshift,0,1,yshift,0,0]
-	      matrixes.append(matrix)
+        xshift = uniform(self.width_shift_range*-1,
+	        self.width_shift_range)*self.xdim
+        yshift = uniform(self.height_shift_range*-1,
+	        self.height_shift_range)*self.ydim
+        matrix = [1,0,xshift,0,1,yshift,0,0]
+        matrixes.append(matrix)
       matrixes = tf.convert_to_tensor(matrixes)
       xdata = tfa.image.transform(xdata, matrixes)
     if self.shear_range > 0:
       matrixes = []
       for x in range(len(batch_slice)):
-	      shear_lambda = self.shear_range / 45
-	      shear_lambda = uniform(shear_lambda*-1,shear_lambda)
-	      matrix = [1.0,shear_lambda,0,0,1.0,0,0,0]
-	      matrixes.append(matrix)
+        shear_lambda = self.shear_range / 45
+        shear_lambda = uniform(shear_lambda*-1,shear_lambda)
+        matrix = [1.0,shear_lambda,0,0,1.0,0,0,0]
+        matrixes.append(matrix)
       matrixes = tf.convert_to_tensor(matrixes)
       xdata = tfa.image.transform(xdata, matrixes)
     if self.zoom_range is not None:
       matrixes = []
       for x in range(len(batch_slice)):
-	      xyfactor = 1/uniform(self.zoom_range[0],self.zoom_range[1])
-	      xshift = round(self.xdim * (1 / xyfactor - 1) * 0.5 * xyfactor)
-	      yshift = round(self.ydim * (1 / xyfactor - 1) * 0.5 * xyfactor)
-	      matrix = [xyfactor,0,xshift,0,xyfactor,yshift,0,0]
-	      matrixes.append(matrix)
+        xyfactor = 1/uniform(self.zoom_range[0],self.zoom_range[1])
+        xshift = round(self.xdim * (1 / xyfactor - 1) * 0.5 * xyfactor)
+        yshift = round(self.ydim * (1 / xyfactor - 1) * 0.5 * xyfactor)
+        matrix = [xyfactor,0,xshift,0,xyfactor,yshift,0,0]
+        matrixes.append(matrix)
       matrixes = tf.convert_to_tensor(matrixes)
       xdata = tfa.image.transform(xdata, matrixes)
-    xdata = tf.where(tf.equal(xdata, 0), averagedata, xdata)
+    if averagedata is not None:
+      xdata = tf.where(tf.equal(xdata, 0), averagedata, xdata)
     del averagedata
 
     if self.save_to_dir is not None:
       for i in range(len(batch_slice)):
-
-	      stored = tf.math.multiply(xdata[i], 255.0)
-	      stored = tf.dtypes.cast(stored,tf.uint8)
-	      stored = tf.io.encode_jpeg(stored)
-	      tf.io.write_file(self.save_to_dir+self.save_prefix
-		      +tools.ts2filename(time())+'.jpg', stored)
-	      del stored
+        if self.normalisation:
+          stored = tf.math.multiply(xdata[i], self.normalisation)
+        else:
+          stored = xdata[i]
+        stored = tf.dtypes.cast(stored,tf.uint8)
+        stored = tf.io.encode_jpeg(stored)
+        print(self.save_to_dir+self.save_prefix+ts2filename(time())+'.jpg')
+        tf.io.write_file(self.save_to_dir+self.save_prefix
+	        +ts2filename(time())+'.jpg', stored)
+        del stored
 
     if self.class_weights is None:
       return(xdata, ydata)
@@ -227,22 +246,18 @@ def getlines(myschool, allschools, filter= False, getallschools=False):
 
 def train_once(myschool):
   seed()
+  #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  #model_name = myschool.model_type
+  model_name = 'efficientnetv2b0'
+  #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   allschools = school.objects.filter(active=1, used_by_others=True)
   if myschool.used_by_others==False:
     allschools = allschools | school.objects.filter(id=myschool.id)
-  xdim = djconf.getconfigint('tr_xdim', 331)
-  ydim = djconf.getconfigint('tr_ydim', 331)
   epochs = djconf.getconfigint('tr_epochs', 1000)
   batchsize = djconf.getconfigint('tr_batchsize', 32)
   val_split = djconf.getconfigfloat('validation_split', 0.33333333)
   mypatience = djconf.getconfigint('patience', 6)
 
-  description = "xdim: " + str(xdim) + "  ydim: " + str(ydim)
-  description += "  epochs: " + str(epochs) + "  batchsize: " + str(batchsize)
-  description += "  val_split: " + str(val_split) + "  min. l_rate: " 
-  description += myschool.l_rate_min + "  max. l_rate: "
-  description += myschool.l_rate_max + "\n" 
-  description += ("  patience: " + str(mypatience))
   print('*******************************************************************');
   print('*** Working on School #'+str(myschool.id)+', '+myschool.name+'...');
   print('*******************************************************************');
@@ -325,8 +340,8 @@ def train_once(myschool):
 	  fitnr = sqlfit.objects.filter(school=myschool.id).latest('id').id
   else:
 	  fitnr = -1
-  copyfile(myschool.dir+'model/cam-ai_model.h5', myschool.dir+'model/cam-ai_model_'+str(fitnr)+'.h5')
-  if path.exists(myschool.dir+'model/cam-ai_model.h5'):
+  copyfile(myschool.dir+'model/'+model_name+'.h5', myschool.dir+'model/'+model_name+'_'+str(fitnr)+'.h5')
+  if path.exists(myschool.dir+'model/'+model_name+'.h5'):
     model_to_load = myschool.load_model_nr
   else:
     model_to_load = 1
@@ -338,9 +353,17 @@ def train_once(myschool):
       if item.id == 1:
         path_for_load = item.dir
   print('*** Loading model '+path_for_load+'...');
-  model = load_model(path_for_load+'model/cam-ai_model.h5', 
+  model = load_model(path_for_load+'model/'+model_name+'.h5', 
 	  custom_objects={'cmetrics': cmetrics,
 		  'hit100': hit100,})
+  xdim = model.layers[0].input_shape[1]
+  ydim = model.layers[0].input_shape[2]
+  description = "xdim: " + str(xdim) + "  ydim: " + str(ydim)
+  description += "  epochs: " + str(epochs) + "  batchsize: " + str(batchsize)
+  description += "  val_split: " + str(val_split) + "  min. l_rate: " 
+  description += myschool.l_rate_min + "  max. l_rate: "
+  description += myschool.l_rate_max + "\n" 
+  description += ("  patience: " + str(mypatience)) + "\n" 
   l_rate = model.optimizer.learning_rate.numpy()
   print('>>> Learning rate from the model:', l_rate)
   l_rate = max(l_rate, float(myschool.l_rate_min))
@@ -351,7 +374,6 @@ def train_once(myschool):
   model.compile(loss='binary_crossentropy',
 	  optimizer=Adam(learning_rate=l_rate),
 	  metrics=[hit100, cmetrics])
-  description += '*** Model ***'
   stringlist = []
   model.summary(print_fn=lambda x: stringlist.append(x))
   short_model_summary = "\n".join(stringlist)
@@ -385,25 +407,30 @@ def train_once(myschool):
     class_weights[i] = min(class_weights[i], 1.0)
   print(class_weights)
 
-  train_sequence = sql_sequence(trlist, xdim, ydim, 
-	  batch_size=batchsize, 
-	  class_weights=class_weights, 
-	  model=model,
-	  #save_to_dir='/home/ludger/temp/',
-	  #save_prefix='test'
-	  rotation_range=5,
+  if model_name == 'nasnetlarge':
+    normalisation = 255.0
+  else:
+    normalisation = None
+  train_sequence = sql_sequence(trlist, xdim, ydim,
+    normalisation = normalisation,
+    batch_size=batchsize, 
+    class_weights=class_weights, 
+    model=model,
+    #save_to_dir='/home/ludger/temp/',
+    #save_prefix='test'
+    rotation_range=5,
     width_shift_range=0.2,
     height_shift_range=0.2,
-	  brightness_range=0.5,
+    brightness_range=0.5,
     shear_range=0.2,
-	  zoom_range=(0.75, 1.25),
+    zoom_range=(0.75, 1.25),
     horizontal_flip=True,
     vertical_flip=False,
   )
 
   description += """
 *** Image Augmentation ***
-	train_sequence = sql_sequence(trlist, xdim, ydim, 
+	train_sequence = sql_sequence(trlist, xdim, ydim, normalisation,
 		batch_size=batchsize, 
 		class_weights=class_weights, 
 		model=model,
@@ -419,14 +446,14 @@ def train_once(myschool):
     vertical_flip=False,)
 """
 
-  vali_sequence = sql_sequence(valist, xdim, ydim, 
+  vali_sequence = sql_sequence(valist, xdim, ydim,
 	  batch_size=batchsize)
 
   es = EarlyStopping(monitor='val_loss', mode='min', verbose=1,
     min_delta=0.0001, patience=mypatience)
-  mc = ModelCheckpoint(myschool.dir+'model/cam-ai_model_temp.h5', 
+  mc = ModelCheckpoint(myschool.dir+'model/'+model_name+'_temp.h5', 
 	  monitor='val_loss', mode='min', verbose=1, save_best_only=True)
-  reduce_lr = ReduceLROnPlateau(monitor='val_loss', mode='min', factor=0.3162278, #sqrt 0.1
+  reduce_lr = ReduceLROnPlateau(monitor='val_loss', mode='min', factor=sqrt(0.1)
 	  patience=3, min_lr=0.0000001, min_delta=0.0001, verbose=1)
 
   sqlconnection.close()
@@ -454,11 +481,11 @@ def train_once(myschool):
 	  gpufan = 0
 
   if (platform.startswith('win') 
-		  and path.exists(myschool.dir+'model/cam-ai_model.h5')):
-	  remove(myschool.dir+'model/cam-ai_model.h5')
-  rename(myschool.dir+'model/cam-ai_model_temp.h5', 
-	  myschool.dir+'model/cam-ai_model.h5')
-  model = load_model(myschool.dir+'model/cam-ai_model.h5', 
+		  and path.exists(myschool.dir+'model/'+model_name+'.h5')):
+	  remove(myschool.dir+'model/'+model_name+'.h5')
+  rename(myschool.dir+'model/'+model_name+'_temp.h5', 
+	  myschool.dir+'model/'+model_name+'.h5')
+  model = load_model(myschool.dir+'model/'+model_name+'.h5', 
 	  custom_objects={'cmetrics': cmetrics,
 		  'hit100': hit100,})
 

@@ -31,12 +31,7 @@ if ((djconf.getconfigfloat('gpu_sim') < 0)
   from os import environ
   environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
   environ["CUDA_VISIBLE_DEVICES"]="0"
-  import tensorflow as tf
-  from tensorflow.keras.models import load_model, Sequential
-  from tensorflow.keras.layers import Flatten, Dense
-  from tensorflow.keras.optimizers import Adam
-  from tensorflow.keras.regularizers import l2
-  from tensorflow.keras.constraints import max_norm
+  from tensorflow.keras.models import load_model
 if djconf.getconfig('tfw_wsurl',''):
   from websocket import WebSocket#, enableTrace
 
@@ -47,55 +42,20 @@ tfw_timeout = djconf.getconfigfloat('tfw_timeout', 1.0)
 tfw_wsurl = djconf.getconfig('tfw_wsurl','')
 tfw_wsname = djconf.getconfig('tfw_wsname','')
 tfw_wspass = djconf.getconfig('tfw_wspass','')
-xdim = djconf.getconfigint('xdim', 331)
-ydim = djconf.getconfigint('ydim', 331)
 if (gpu_sim < 0) and (not tfw_wsurl):
-  l_rate = djconf.getconfigfloat('learning_rate', 0.0001)
-  weight_decay = djconf.getconfigfloat('weight_decay', None)
-  weight_constraint = djconf.getconfigfloat('weight_constraint', None)
-  dropout = djconf.getconfigfloat('dropout', None)
-  base_model = load_model(djconf.getconfig('basemodelpath')+'basemodel.h5')
-  base_model.trainable = False
-
-  if weight_decay is None:
-	  decay_reg = None
-  else:
-	  decay_reg = l2(weight_decay)
-  if weight_constraint is None:
-	  weight_norm = None
-  else:
-	  weight_norm = max_norm(weight_constraint)
   gpu_sim_loading = 0
 else:
   gpu_sim_loading = djconf.getconfigint('gpu_sim_loading', 0)
 
-def makemodel():
-  model = Sequential()
-  model.add(base_model)
-  model.add(Flatten())
-  model.add(Dense(128,activation="relu", 
-    kernel_regularizer=decay_reg, bias_regularizer=decay_reg, 
-    kernel_constraint=weight_norm, bias_constraint=weight_norm))
-  if dropout is not None:
-    model.add(Dropout(dropout))
-  model.add(Dense(64,activation="relu", 
-    kernel_regularizer=decay_reg, bias_regularizer=decay_reg, 
-    kernel_constraint=weight_norm, bias_constraint=weight_norm))
-  if dropout is not None:
-    model.add(Dropout(dropout))
-  model.add(Dense(len(classes_list), activation='sigmoid'))
-  model.compile(loss='binary_crossentropy',
-    optimizer=Adam(learning_rate=l_rate),
-    metrics=[hit100, cmetrics])
-  return(model)
-
 class model_buffer(deque):
 
-  def __init__(self):
+  def __init__(self, schoolnr):
     super().__init__()
     self.ts = time()
     self.nr_images = 0
-    self.img_rest = np.empty((0, xdim, ydim, 3), np.uint8)
+    self.img_rest = np.empty((0, 
+      tfworker.allmodels[schoolnr]['xdim'], 
+      tfworker.allmodels[schoolnr]['ydim'], 3), np.uint8)
     self.fra_in_rest = []
     self.pre_rest = None
     self.fra_out_rest = None
@@ -140,9 +100,10 @@ class tf_user(object):
     self.fifoout = Queue()
 
   def fifoin_put(self, data):
-    if type(data[1]) == np.ndarray:
-      data[1] = (data[1], list(range(data[1].shape[0])))
-    self.fifoin.put(data)
+    if (self.fifoin.qsize() < 10) and (self.fifoout.qsize() < 10):
+      if type(data[1]) == np.ndarray:
+        data[1] = (data[1], list(range(data[1].shape[0])))
+      self.fifoin.put(data)
 
   def fifoin_get(self, **kwargs):
     return(self.fifoin.get(**kwargs))
@@ -159,6 +120,7 @@ class tf_user(object):
 class c_tfworker:
 
   def __init__(self, max_nr_models=64):
+    self.is_ready = False
     self.logger = None
     self.users = {}
     self.users_lock = Lock()
@@ -206,54 +168,70 @@ class c_tfworker:
         connection.close()
     if schoolnr in self.allmodels:
       if ((myschool.lastfile is not None)
-          and	((self.allmodels[schoolnr]['time'] is None)						
+          and	((self.allmodels[schoolnr]['time'] is None)
           or (myschool.lastfile > self.allmodels[schoolnr]['time']))):
         del self.allmodels[schoolnr]
         del self.activemodels[schoolnr]
-    if not (schoolnr in self.allmodels):
-      self.allmodels[schoolnr] = {}
-      self.allmodels[schoolnr]['time'] = myschool.lastfile
-      if (gpu_sim >= 0) or tfw_wsurl:
-        sleep(gpu_sim_loading) 
-      else:
-        tempmodel = load_model(myschool.dir+'model/cam-ai_model.h5', 
-          custom_objects={'cmetrics': cmetrics, 'hit100': hit100,})
-        self.allmodels[schoolnr]['weights'] = []
-        self.allmodels[schoolnr]['weights'].append(
-          tempmodel.get_layer(index=2).get_weights())
-        self.allmodels[schoolnr]['weights'].append(
-          tempmodel.get_layer(index=3).get_weights())
-        self.allmodels[schoolnr]['weights'].append(
-          tempmodel.get_layer(index=4).get_weights())
-        del tempmodel
-      logger.info('***** Got model file #'+str(schoolnr)+'...')
     if not (schoolnr in self.activemodels):
+      tempmodel = None
+      if not (schoolnr in self.allmodels):
+        self.allmodels[schoolnr] = {}
+        self.allmodels[schoolnr]['time'] = myschool.lastfile
+        if gpu_sim >= 0:
+          self.allmodels[schoolnr]['xdim'] = 50
+          self.allmodels[schoolnr]['ydim'] = 50
+          sleep(gpu_sim_loading) 
+        elif tfw_wsurl:
+          self.allmodels[schoolnr]['xdim'] = djconf.getconfigint('xdim')
+          self.allmodels[schoolnr]['ydim'] = djconf.getconfigint('ydim')
+          sleep(gpu_sim_loading) 
+        else:
+          tempmodel = load_model(myschool.dir+'model/'+myschool.model_type+'.h5', 
+            custom_objects={'cmetrics': cmetrics, 'hit100': hit100,})
+          self.allmodels[schoolnr]['type'] = myschool.model_type
+          self.allmodels[schoolnr]['xdim'] = tempmodel.layers[0].input_shape[1]
+          self.allmodels[schoolnr]['ydim'] = tempmodel.layers[0].input_shape[2]
+          self.allmodels[schoolnr]['weights'] = []
+          self.allmodels[schoolnr]['weights'].append(
+            tempmodel.get_layer(index=2).get_weights())
+          self.allmodels[schoolnr]['weights'].append(
+            tempmodel.get_layer(index=3).get_weights())
+          self.allmodels[schoolnr]['weights'].append(
+            tempmodel.get_layer(index=4).get_weights())
+        logger.info('***** Got model file #'+str(schoolnr)+', type: '+myschool.model_type)
       if gpu_sim >= 0 or tfw_wsurl:
         sleep(gpu_sim_loading / 2)
         self.activemodels[schoolnr] = True
       else:
         if len(self.activemodels) < self.max_nr_models:
-          self.activemodels[schoolnr] = makemodel()
-          nr_to_replace = schoolnr
-        else:
+          if tempmodel is None:
+            self.activemodels[schoolnr] = load_model(myschool.dir+'model/'+myschool.model_type+'.h5', 
+              custom_objects={'cmetrics': cmetrics, 'hit100': hit100,})
+          else:
+            self.activemodels[schoolnr] = tempmodel
+        else: #this case is not tested, needed if # of models > self.max_nr_models
           nr_to_replace = min(self.activemodels, 
-            key= lambda x: self.activemodels[x]['time']) 
-          self.activemodels[schoolnr] = self.activemodels[nr_to_replace]
+            key= lambda x: self.activemodels[x]['time'])	
+          if self.allmodels[nr_to_replace]['type'] == myschool.model_type:
+            self.activemodels[schoolnr] = self.activemodels[nr_to_replace]
+            self.activemodels[schoolnr].get_layer(index=2).set_weights(
+              self.allmodels[schoolnr]['weights'][0])
+            self.activemodels[schoolnr].get_layer(index=3).set_weights(
+              self.allmodels[schoolnr]['weights'][1])
+            self.activemodels[schoolnr].get_layer(index=4).set_weights(
+              self.allmodels[schoolnr]['weights'][2])
+          else:
+            self.activemodels[schoolnr] = load_model(myschool.dir+'model/'+myschool.model_type+'.h5', 
+              custom_objects={'cmetrics': cmetrics, 'hit100': hit100,})
           del self.activemodels[nr_to_replace]
-        self.activemodels[schoolnr].get_layer(index=2).set_weights(
-          self.allmodels[schoolnr]['weights'][0])
-        self.activemodels[schoolnr].get_layer(index=3).set_weights(
-          self.allmodels[schoolnr]['weights'][1])
-        self.activemodels[schoolnr].get_layer(index=4).set_weights(
-          self.allmodels[schoolnr]['weights'][2])
-      logger.info('***** Got model buffer #'+str(schoolnr)+'...')
+      logger.info('***** Got model buffer #'+str(schoolnr)+', type: '+myschool.model_type)
     if test_pred:
       if (gpu_sim < 0) and (not tfw_wsurl):
-        xdata = np.random.rand(8,331,331,3)
+        xdata = np.random.rand(8,self.allmodels[schoolnr]['xdim'],self.allmodels[schoolnr]['ydim'],3)
         self.activemodels[schoolnr].predict_on_batch(xdata)
       else:
         sleep(gpu_sim_loading / 3)
-      logger.info('***** Testrun for model #'+str(schoolnr)+' done...')
+      logger.info('***** Testrun for model #'+str(schoolnr)+', type: '+myschool.model_type)
 
   def run1(self, logger):
     schoolnr = -1
@@ -280,7 +258,7 @@ class c_tfworker:
           slice_to_process = self.model_buffers[schoolnr].get(tfw_maxblock)
           framelist = slice_to_process[1]
           self.check_model(schoolnr, logger)
-          if gpu_sim >= 0:
+          if gpu_sim >= 0: #GPU Simulation with random
             if gpu_sim > 0:
               sleep(gpu_sim)
             predictions = np.empty((0, len(classes_list)), np.float32)
@@ -295,7 +273,7 @@ class c_tfworker:
                 line = np.array([np.float32(line)])
                 self.cachedict[myindex] = line
               predictions = np.vstack((predictions, line))
-          elif tfw_wsurl:
+          elif tfw_wsurl: #Predictions from Server
             outdict = {
               'code' : 'imgl',
               'scho' : e_school,
@@ -308,7 +286,6 @@ class c_tfworker:
               self.ws_ts = time()
               self.ws.send(cv.imencode('.jpg', slice_to_process[0][i])[1].tobytes(), opcode=2)
             predictions = json.loads(self.ws.recv())
-            print(predictions)
           else: #local GPU
             slice_to_process[0] = np.float32(slice_to_process[0])/255
             if slice_to_process[0].shape[0] < tfw_maxblock:
@@ -373,6 +350,7 @@ class c_tfworker:
     for item in used_models:
       self.check_model(item, logger, test_pred = True)
     logger.info('***** All Models are ready.')
+    self.is_ready = True
     userindex = -1
     while True:
       if len(self.users) == 0:
@@ -401,7 +379,7 @@ class c_tfworker:
           schoolnr = newitem[0]
           newitem.append(userindex)
           if schoolnr not in self.model_buffers:
-            self.model_buffers[schoolnr] = model_buffer()
+            self.model_buffers[schoolnr] = model_buffer(schoolnr)
           self.model_buffers[schoolnr].append(newitem)
           #print('model_buffer', len(self.model_buffers[schoolnr]))
           # Debug - Stuff *****

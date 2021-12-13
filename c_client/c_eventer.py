@@ -55,9 +55,9 @@ class c_eventer(c_device):
     while True:
       changed = False
       for i in self.eventdict.copy():
-        if self.eventdict[i].status == 0:
+        if (i in self.eventdict) and (self.eventdict[i].status == 0):
           for j in self.eventdict.copy():
-            if ((j > i) and (self.eventdict[j].status == 0) 
+            if ((j > i) and (j in self.eventdict) and (self.eventdict[j].status == 0) 
                 and hasoverlap(self.eventdict[i], self.eventdict[j])):
               self.eventdict[i][0] = min(self.eventdict[i][0], 
                 self.eventdict[j][0])
@@ -198,8 +198,13 @@ class c_eventer(c_device):
         del self.eventdict[idict]
       else:
         self.eventdict[idict].get_predictions(self.params['school'], logger=self.logger)
-        if ((self.eventdict[idict].end < (time() - self.params['event_time_gap'])) and (not self.eventdict[idict].ts)):
+        if (((self.eventdict[idict].end < (time() - self.params['event_time_gap'])) 
+          or (self.eventdict[idict].end > (self.eventdict[idict].start + 300.0))) 
+          and (not self.eventdict[idict].ts)):
           self.eventdict[idict].ts  = self.eventdict[idict].end
+
+
+
         if self.eventdict[idict].ts and self.eventdict[idict].pred_is_done(ts = self.eventdict[idict].ts):
           predictions = self.eventdict[idict].pred_read(radius=10, max=1.0)
           self.eventdict[idict].goes_to_school = self.resolve_rules(2, 
@@ -208,15 +213,14 @@ class c_eventer(c_device):
             self.eventdict[idict].isrecording or self.resolve_rules(3,
               predictions))
           if self.resolve_rules(4, predictions):
-            to_email = self.params['alarm_email']
+            self.eventdict[idict].to_email = self.params['alarm_email']
           else:
-            to_email = ''
+            self.eventdict[idict].to_email = ''
           if self.resolve_rules(5, predictions):
             alarm(self.id, self.params['name'], predictions, 
               self.params['school'], self.logger)
           if (self.eventdict[idict].goes_to_school 
               or self.eventdict[idict].isrecording):
-            savename = ''
             if self.eventdict[idict].isrecording:
               if ((self.parent.latest_ready_video() is not None) 
                   and (self.eventdict[idict].end 
@@ -235,11 +239,11 @@ class c_eventer(c_device):
                           my_vid_str += self.parent.vid_list[i+1][2]
                         break
                 if my_vid_str in self.vid_str_dict:
-                  savename = self.vid_str_dict[my_vid_str]
+                  self.eventdict[idict].savename = self.vid_str_dict[my_vid_str]
                   isdouble = True
                 else:
-                  savename = 'E_'+str(self.eventdict[idict].id).zfill(12)+'.mp4'
-                  savepath = djconf.getconfig('recordingspath')+savename
+                  self.eventdict[idict].savename = 'E_'+str(self.eventdict[idict].id).zfill(12)+'.mp4'
+                  savepath = djconf.getconfig('recordingspath')+self.eventdict[idict].savename
                   if len(my_vid_list) == 1: #presently not used
                     copyfile(djconf.getconfig('recordingspath')+my_vid_list[0], 
                       savepath)
@@ -258,12 +262,12 @@ class c_eventer(c_device):
                   .input(savepath, v='warning')
                   .output(savepath[:-3]+'webm')
                   .run_async())
-                  self.vid_str_dict[my_vid_str] = savename
+                  self.vid_str_dict[my_vid_str] = self.eventdict[idict].savename
                   isdouble = False
                 eventlines = event.objects.filter(id=self.eventdict[idict].id)
                 if len(eventlines) > 0:
                   eventline = eventlines[0]
-                  eventline.videoclip = savename[:-4]
+                  eventline.videoclip = self.eventdict[idict].savename[:-4]
                   eventline.double = isdouble
                   eventline.save()
                 if not isdouble:
@@ -274,16 +278,18 @@ class c_eventer(c_device):
                 self.eventdict[idict].status = -1
             else:
               self.eventdict[idict].status  = min(-2, self.eventdict[idict].status)
-            if self.eventdict[idict].status <= -2:
-              self.eventdict[idict].save(self.params['school'], 
-                self.id, self.params['name'], 
-                self.eventdict[idict].goes_to_school, to_email, savename)
-          self.eventdict[idict].status = min(-2, self.eventdict[idict].status)    
+          else:
+            self.eventdict[idict].status  = min(-2, self.eventdict[idict].status)
+        if ((self.eventdict[idict].status == -2)
+            and (self.eventdict[idict].goes_to_school 
+            or self.eventdict[idict].isrecording)):
+          self.eventdict[idict].save(self.params['school'], 
+            self.id, self.params['name'], 
+            self.eventdict[idict].goes_to_school, self.eventdict[idict].to_email, self.eventdict[idict].savename) 
     self.check_busy = False  
 
 
   def display_events(self):
-    #if (self.display_busy or (self.view_count == 0)):
     if self.display_busy:
       return()
     self.display_busy = True
@@ -291,7 +297,7 @@ class c_eventer(c_device):
       self.frameslist.clear()
       for i in self.eventdict:
         self.eventdict[i].nrofcopies = 0
-        self.eventdict[i].status = -2
+        self.frameslist.clear()
       self.display_busy = False
       return()
     while len(self.frameslist) > 0:
@@ -357,14 +363,15 @@ class c_eventer(c_device):
 
   def run_one(self, frame):
     if self.view_count > 0:
-      frameplusevents = {}
-      frameplusevents['frame'] = frame
-      frameplusevents['events'] = []
-      for idict in self.eventdict.copy():
-        if ((idict in self.eventdict) and (self.eventdict[idict].status == 0)):
-          frameplusevents['events'].append((idict, self.eventdict[idict].end, self.eventdict[idict][:4]))
-          self.eventdict[idict].nrofcopies += 1
-      self.frameslist.append(frameplusevents)
+      if len(self.frameslist) < 20:
+        frameplusevents = {}
+        frameplusevents['frame'] = frame
+        frameplusevents['events'] = []
+        for idict in self.eventdict.copy():
+          if ((idict in self.eventdict) and (self.eventdict[idict].status == 0)):
+            frameplusevents['events'].append((idict, self.eventdict[idict].end, self.eventdict[idict][:4]))
+            self.eventdict[idict].nrofcopies += 1
+        self.frameslist.append(frameplusevents)
 
   def resolve_rules(self, reaction, predictions):
     if predictions is None:

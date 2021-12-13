@@ -55,7 +55,7 @@ def run(logger):
     logger.info(logstring)
     inqueuetotal = 0
     outqueuetotal = 0
-    for user in tfworker.users:
+    for user in tfworker.users.copy():
       inqueuetotal += tfworker.users[user].fifoin.qsize()
       outqueuetotal += tfworker.users[user].fifoout.qsize()
     logstring = str(len(tfworker.users)) + ' TFW-Users: '
@@ -63,7 +63,7 @@ def run(logger):
     logstring += (' OutQueue Total: ' + str(outqueuetotal))
     logger.info(logstring)
     viewqueuetotal = 0
-    for view in c_base.instances['E']:
+    for view in c_base.instances['E'].copy():
       viewqueuetotal += len(c_base.instances['E'][view].frameslist)
     logstring = str(len(c_base.instances['E'])) + ' Cached Views: '
     logstring += (' ViewQueue Total: ' + str(viewqueuetotal))
