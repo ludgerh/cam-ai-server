@@ -178,12 +178,20 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
             myslice = imglist[:self.maxblock]
           else:
             myslice = imglist[(i * self.maxblock):((i+1) * self.maxblock)]
-          tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice])
+          while True:
+            if tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice]):
+              break
+            else:
+              sleep(djconf.getconfigfloat('long_brake', 1.0))
           myoutput = tfworker.users[self.tf_w_index].fifoout_get()[0]
           predictions = np.append(predictions, myoutput, 0)
       if rest > 0:
         myslice = imglist[(count * self.maxblock):]
-        tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice])
+        while True:
+          if tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice]):
+            break
+          else:
+            sleep(djconf.getconfigfloat('long_brake', 1.0))
         myoutput =  tfworker.users[self.tf_w_index].fifoout_get()[0]
         predictions = np.append(predictions, myoutput, 0)
       outlist['data'] = predictions.tolist()
@@ -752,7 +760,7 @@ class repeaterConsumer(WebsocketConsumer):
     self.ffprobe_urls[url] = None
     self.send('ffprob:'+url)
     while self.ffprobe_urls[url] is None:
-      sleep(1)
+      sleep(djconf.getconfigfloat('long_brake', 1.0))
     return(self.ffprobe_urls[url])
     
       
@@ -827,7 +835,11 @@ class predictionsConsumer(WebsocketConsumer):
       self.imglist = np.vstack((self.imglist, frame))
       self.numberofframes -= 1
       if self.numberofframes == 0:
-        tfworker.users[self.tf_w_index].fifoin_put([self.school, self.imglist])
+        while True:
+          if tfworker.users[self.tf_w_index].fifoin_put([self.school, self.imglist]):
+            break
+          else:
+            sleep(djconf.getconfigfloat('short_brake', 0.01))
         predictions = tfworker.users[self.tf_w_index].fifoout_get()[0].tolist()
         self.send(json.dumps(predictions))
 

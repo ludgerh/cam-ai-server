@@ -164,7 +164,10 @@ class c_cam(c_device):
     self.wd_ts = time()
     for f in glob(djconf.getconfig('recordingspath')
         + 'C' + str(self.id).zfill(4) + '_????????.mp4'):
-      remove(f)
+      try:
+        remove(f)
+      except:
+        self.logger.warning('Cam-Task failed to delete: '+f)
     self.clipline = None
     if self.params['feed_type'] in {2, 3}:
       inparams = '-v info -use_wallclock_as_timestamps 1'
@@ -351,7 +354,7 @@ class c_cam(c_device):
               self.ff_proc_1 = None
               self.ff_proc_2 = None
         else:
-          sleep(0.01)
+          sleep(djconf.getconfigfloat('short_brake', 0.01))
     while True:
       if self.params['feed_type'] == 1:
         newtime = time()
@@ -435,7 +438,7 @@ class c_cam(c_device):
             self.ff_proc_2.stdin.write(in_bytes)
           break
         except (ValueError, AttributeError):
-          sleep(0.01)
+          sleep(djconf.getconfigfloat('short_brake', 0.01))
     self.getting_newprozess = False
     imagesum = np.sum(frame)
     if self.imagecheck != imagesum:

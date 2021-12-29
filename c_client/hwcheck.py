@@ -32,7 +32,7 @@ def average(what):
 		if temp is not None:
 			result += temp
 			count += 1
-			sleep(1)
+			sleep(djconf.getconfigfloat('long_brake', 1.0))
 	if count == 0:
 		return(None)
 	else:

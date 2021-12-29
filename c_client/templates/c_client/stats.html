@@ -30,7 +30,9 @@
 		var lineChartData = {
 			labels: [
 			{% for fit in school.modelfits %}
-				'{{ fit.id }}',
+	      {% if fit.loss > 0 %}
+				  '{{ fit.id }}',
+        {% endif %}
 			{% endfor %}
 			],
 			datasets: [{
@@ -39,7 +41,9 @@
 				fill: false,
 				data: [
 				{% for fit in school.modelfits %}
-					'{{ fit.val_loss }}',
+	        {% if fit.loss > 0 %}
+					  '{{ fit.val_loss }}',
+          {% endif %}
 				{% endfor %}
 				],
 				yAxisID: 'y-axis-1',
@@ -49,7 +53,9 @@
 				fill: false,
 				data: [
 				{% for fit in school.modelfits %}
-					'{{ fit.val_cmetrics }}',
+	        {% if fit.loss > 0 %}
+					  '{{ fit.val_cmetrics }}',
+          {% endif %}
 				{% endfor %}
 				],
 				yAxisID: 'y-axis-2'
@@ -59,7 +65,9 @@
 				fill: false,
 				data: [
 				{% for fit in school.modelfits %}
-					'{{ fit.loss }}',
+	        {% if fit.loss > 0 %}
+					  '{{ fit.loss }}',
+          {% endif %}
 				{% endfor %}
 				],
 				yAxisID: 'y-axis-1',
@@ -69,7 +77,9 @@
 				fill: false,
 				data: [
 				{% for fit in school.modelfits %}
-					'{{ fit.cmetrics }}',
+	        {% if fit.loss > 0 %}
+					  '{{ fit.cmetrics }}',
+          {% endif %}
 				{% endfor %}
 				],
 				yAxisID: 'y-axis-2'
@@ -126,21 +136,29 @@
 		{% for fit in school.modelfits %}
 			<tr><td>{{ fit.id }}</td>
 			<td>{{ fit.made|date:'d.m.Y H:i' }}</td>
-			<td>{{ fit.minutes|floatformat:0 }}</td>
-			<td>{{ fit.cputemp|floatformat:0 }}</td>
-			<td>{{ fit.cpufan1|floatformat:0 }}</td>
-			<td>{{ fit.cpufan2|floatformat:0 }}</td>
-			<td>{{ fit.gputemp|floatformat:2 }}</td>
-			<td>{{ fit.gpufan|floatformat:2 }}</td>
-			<td>{{ fit.epochs }}</td>
+	    {% if fit.loss > 0 %}
+			  <td>{{ fit.minutes|floatformat:0 }}</td>
+			  <td>{{ fit.cputemp|floatformat:0 }}</td>
+			  <td>{{ fit.cpufan1|floatformat:0 }}</td>
+			  <td>{{ fit.cpufan2|floatformat:0 }}</td>
+			  <td>{{ fit.gputemp|floatformat:2 }}</td>
+			  <td>{{ fit.gpufan|floatformat:2 }}</td>
+			  <td>{{ fit.epochs }}</td>
+      {% else %}
+			  <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      {% endif %}
 			<td>{{ fit.nr_tr }}</td>
 			<td>{{ fit.nr_va }}</td>
-			<td>{{ fit.loss|floatformat:4 }}</td>
-			<td>{{ fit.hit100|floatformat:4 }}</td>
-			<td>{{ fit.cmetrics|floatformat:4 }}</td>
-			<td>{{ fit.val_loss|floatformat:4 }}</td>
-			<td>{{ fit.val_hit100|floatformat:4 }}</td>
-			<td>{{ fit.val_cmetrics|floatformat:4 }}</td>
+	    {% if fit.loss > 0 %}
+			  <td>{{ fit.loss|floatformat:4 }}</td>
+			  <td>{{ fit.hit100|floatformat:4 }}</td>
+			  <td>{{ fit.cmetrics|floatformat:4 }}</td>
+			  <td>{{ fit.val_loss|floatformat:4 }}</td>
+			  <td>{{ fit.val_hit100|floatformat:4 }}</td>
+			  <td>{{ fit.val_cmetrics|floatformat:4 }}</td>
+      {% else %}
+			  <td><strong>Busy</strong></td>
+      {% endif %}
 			<td><a href="/c_client/statsdetails/{{ fit.id }}/" target="_blank">Details</a></td></tr>
 		{% endfor %}
 		</table><br><br>

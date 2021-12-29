@@ -13,6 +13,7 @@
 
 from threading import Lock
 from time import sleep
+from .c_tools import djconf
 
 # Frame Types:
 # 1 : Jpeg Data
@@ -49,7 +50,7 @@ class c_buffer:
   def putframe(self, data):
     if self.getall:
       while self.nextitem is not None:
-        sleep(0.01)
+        sleep(djconf.getconfigfloat('short_brake', 0.01))
     self.nextitem = data
     with self.dictlock:
       for index in self.onf_dict:
@@ -57,14 +58,14 @@ class c_buffer:
 
   def getframe(self):
     while self.nextitem is None:
-      sleep(0.01)
+        sleep(djconf.getconfigfloat('short_brake', 0.01))
     data = self.nextitem
     self.nextitem = None
     return(data)
 
   def getframeonly(self):
     while self.nextitem is None:
-      sleep(0.01)
+      sleep(djconf.getconfigfloat('short_brake', 0.01))
     data = self.nextitem[1]
     self.nextitem = None
     return(data)

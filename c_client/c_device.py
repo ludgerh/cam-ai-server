@@ -174,7 +174,7 @@ class c_device(c_base):
       while True:
         if ((self.view_count == 0) and (self.record_count == 0) 
             and (self.data_count == 0) and (self.type != 'C')):
-          sleep(0.01)
+          sleep(djconf.getconfigfloat('short_brake', 0.01))
         else:
           break
       if self.inbuffer:
@@ -186,10 +186,10 @@ class c_device(c_base):
       if (self.type == 'C') or sl.greenlight(self.period):
         result = self.run_one(input)
         if result is None:
-          sleep(0.01)
+          sleep(djconf.getconfigfloat('short_brake', 0.01))
         else:
           self.put_one(result)
           sl.ts1 = sl.ts2
       else:
-        sleep(0.01)
+        sleep(djconf.getconfigfloat('short_brake', 0.01))
     self.finished = True

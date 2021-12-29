@@ -15,7 +15,7 @@
 from concurrent import futures
 from time import sleep
 import psutil
-from .c_tools import run_with_log
+from .c_tools import run_with_log, djconf
 from .c_base import c_base
 from .c_tfworker import tfworker
 
@@ -37,7 +37,8 @@ def displaystring(numberin):
   return(str(round(result, 3))+stringout)
 
 def run(logger):
-  i = 0
+  if not djconf.getconfigbool('show_health', True):
+    return()
   while True:
     logstring = 'Health Status:'
     logger.info(logstring)

@@ -30,9 +30,9 @@ class c_access():
     mychecklist = [item for item in mychecklist if (item.vtype==type 
       or ((type.upper() in {'C','D','E'}) and (item.vtype.upper()=='X')) or item.vtype=='0')]
     mychecklist = [item for item in mychecklist if (item.vid==id or item.vid==0)]
-    mychecklist = [item for item in mychecklist if (item.u_g.upper()=='U' and (
-      ((userid != 0) and (item.u_g_nr==userid or item.u_g_nr==0))
-      or (item.u_g_nr == -1)))]
+    mychecklist = [item for item in mychecklist if ((item.u_g.upper()=='U') and (
+      ((userid != -1) and ((item.u_g_nr==userid) or (item.u_g_nr==0)))
+      or ((userid == -1) and (item.u_g_nr == -1))))]
     mychecklist = [item for item in mychecklist if (item.r_w.upper()==mode.upper() or item.r_w=='0' or item.r_w.upper()=='W')]
     if len(mychecklist) > 0:
       return(True)

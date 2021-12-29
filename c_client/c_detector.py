@@ -96,18 +96,19 @@ class c_detector(c_device):
 	            rect_list.append(rectb)
 	            recta = rect_btoa(rectb)
     rect_list = merge_rects(rect_list)
-    if len(rect_list) <= self.params['max_rect']:
-      for rect in rect_list:
-        recta = rect_btoa(rect)
-        cv.rectangle(buffer1, recta, (200), 5)
-        if ((recta[2]<=objectmaxsize) and (recta[3]<=objectmaxsize)):
-          if ((self.myeventer.view_count > 0) 
-              or (self.myeventer.record_count > 0) 
-              or (self.myeventer.data_count > 0)):
-            aoi = np.copy(frame[rect[2]:rect[3], rect[0]:rect[1]])
-            self.eventbuffer.putframe((3, aoi, frametime, rect[0], rect[1], rect[2], rect[3]))
-        else:
-          self.background = np.float32(frame)
+    sendtime = frametime
+    for rect in rect_list[:self.params['max_rect']]:
+      recta = rect_btoa(rect)
+      cv.rectangle(buffer1, recta, (200), 5)
+      if ((recta[2]<=objectmaxsize) and (recta[3]<=objectmaxsize)):
+        if ((self.myeventer.view_count > 0) 
+            or (self.myeventer.record_count > 0) 
+            or (self.myeventer.data_count > 0)):
+          aoi = np.copy(frame[rect[2]:rect[3], rect[0]:rect[1]])
+          self.eventbuffer.putframe((3, aoi, sendtime, rect[0], rect[1], rect[2], rect[3]))
+        sendtime += 0.000001
+      else:
+        self.background = np.float32(frame)
     if self.params['backgr_delay'] == 0:
       self.buffer = frame
     else:

@@ -36,7 +36,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau #, TensorBoard
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, Callback
 from tensorflow.keras.utils import Sequence
 from tensorflow.keras import backend as K
 
@@ -197,6 +197,23 @@ class sql_sequence(Sequence):
     if self.class_weights is not None:
       shuffle(self.sqlresult)
 
+class MyCallback(Callback):
+  def __init__(self, myfit):
+    super().__init__()
+    self.myfit = myfit
+
+  def on_epoch_end(self, myepoch, logs=None):
+    myepoch = epoch(fit=self.myfit, 
+      loss = float(logs['loss']),
+      cmetrics = float(logs['cmetrics']),
+      hit100 = float(logs['hit100']),
+      val_loss = float(logs['val_loss']),
+      val_cmetrics = float(logs['val_cmetrics']),
+      val_hit100 = float(logs['val_hit100']),
+    )
+    myepoch.save()
+    sqlconnection.close()
+
 def getlines(myschool, allschools, filter= False, getallschools=False):
   schooldict = {}
   for i in allschools:
@@ -247,8 +264,8 @@ def getlines(myschool, allschools, filter= False, getallschools=False):
 def train_once(myschool):
   seed()
   #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  #model_name = myschool.model_type
-  model_name = 'efficientnetv2b0'
+  model_name = myschool.model_type
+  #model_name = 'efficientnetv2s'
   #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   allschools = school.objects.filter(active=1, used_by_others=True)
   if myschool.used_by_others==False:
@@ -449,12 +466,34 @@ def train_once(myschool):
   vali_sequence = sql_sequence(valist, xdim, ydim,
 	  batch_size=batchsize)
 
+  myfit = sqlfit(made=ts_start, 
+	  minutes = 0.0, 
+	  school = myschool.id, 
+	  epochs = 0, 
+	  nr_tr =len(trlist),
+	  nr_va = len(valist),
+	  loss = 0.0, 
+	  cmetrics = 0.0, 
+	  hit100 = 0.0, 
+	  val_loss = 0.0, 
+	  val_cmetrics = 0.0, 
+	  val_hit100 = 0.0, 
+	  cputemp = 0.0, 
+	  cpufan1 = 0.0, 
+	  cpufan2 = 0.0, 
+	  gputemp = 0.0, 
+	  gpufan = 0.0, 
+	  description = description,
+  )
+  myfit.save()
+
   es = EarlyStopping(monitor='val_loss', mode='min', verbose=1,
     min_delta=0.0001, patience=mypatience)
   mc = ModelCheckpoint(myschool.dir+'model/'+model_name+'_temp.h5', 
 	  monitor='val_loss', mode='min', verbose=1, save_best_only=True)
-  reduce_lr = ReduceLROnPlateau(monitor='val_loss', mode='min', factor=sqrt(0.1)
+  reduce_lr = ReduceLROnPlateau(monitor='val_loss', mode='min', factor=sqrt(0.1),
 	  patience=3, min_lr=0.0000001, min_delta=0.0001, verbose=1)
+  cb = MyCallback(myfit)
 
   sqlconnection.close()
 
@@ -464,7 +503,7 @@ def train_once(myschool):
     shuffle=False,
 	  epochs=epochs, 
 	  verbose=2,
-	  callbacks=[es, mc, reduce_lr],
+	  callbacks=[es, mc, reduce_lr, cb,],
 	  #use_multiprocessing=True,
 	  )
 
@@ -504,36 +543,20 @@ def train_once(myschool):
   epochs = len(history.history['loss'])	
   if epochs < mypatience + 1:
 	  mypatience = epochs - 1 
-  myfit = sqlfit(made=ts_start, 
-	  minutes = (timezone.now()-ts_start).total_seconds() / 60, 
-	  school = myschool.id, 
-	  epochs = epochs, 
-	  nr_tr =len(trlist),
-	  nr_va = len(valist),
-	  loss = float(history.history['loss'][epochs-mypatience-1]),
-	  cmetrics = float(history.history['cmetrics'][epochs-mypatience-1]), 
-	  hit100 = float(history.history['hit100'][epochs-mypatience-1]), 
-	  val_loss = float(history.history['val_loss'][epochs-mypatience-1]), 
-	  val_cmetrics = float(history.history['val_cmetrics'][epochs-mypatience-1]),
-	  val_hit100 = float(history.history['val_hit100'][epochs-mypatience-1]), 
-	  cputemp = cputemp, 
-	  cpufan1 = cpufan1, 
-	  cpufan2 = cpufan2, 
-	  gputemp = gputemp, 
-	  gpufan = gpufan, 
-	  description = description,
-  )
+  myfit.minutes = (timezone.now()-ts_start).total_seconds() / 60
+  myfit.epochs = epochs
+  myfit.loss = float(history.history['loss'][epochs-mypatience-1])
+  myfit.cmetrics = float(history.history['cmetrics'][epochs-mypatience-1])
+  myfit.hit100 = float(history.history['hit100'][epochs-mypatience-1])
+  myfit.val_loss = float(history.history['val_loss'][epochs-mypatience-1])
+  myfit.val_cmetrics = float(history.history['val_cmetrics'][epochs-mypatience-1])
+  myfit.val_hit100 = float(history.history['val_hit100'][epochs-mypatience-1])
+  myfit.cputemp = cputemp
+  myfit.cpufan1 = cpufan1
+  myfit.cpufan2 = cpufan2
+  myfit.gputemp = gputemp
+  myfit.gpufan = gpufan
   myfit.save()
-  for i in range(len(history.history['loss'])):
-	  myepoch = epoch(fit=myfit, 
-		  loss = float(history.history['loss'][i]),
-		  cmetrics = float(history.history['cmetrics'][i]),
-		  hit100 = float(history.history['hit100'][i]),
-		  val_loss = float(history.history['val_loss'][i]),
-		  val_cmetrics = float(history.history['val_cmetrics'][i]),
-		  val_hit100 = float(history.history['val_hit100'][i]),
-	  )
-	  myepoch.save()
 
   print('***  Done  ***')
   print('')

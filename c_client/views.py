@@ -62,7 +62,7 @@ else:
   run_with_log(executor, tfworker.run2, 'tfworker2')
 
   while (not tfworker.is_ready):
-    sleep(1.0)
+    sleep(djconf.getconfigfloat('long_brake', 1.0))
 
   items_to_start = []
   items_to_postinit = []
@@ -80,7 +80,7 @@ else:
   for line in eventer.objects.filter(active=True):
     myeventer = c_eventer(line.id)	
     items_to_start.append((myeventer.run, 'eventer_'+str(line.id)))	
-    items_to_start.append((myeventer.detected_frames, 
+    items_to_start.append((myeventer.inserter, 
       'e_inserter_'+str(line.id)))	
     items_to_postinit.append(myeventer.postinit)
 
@@ -236,7 +236,6 @@ def eventer_index(request):
   return(HttpResponse(template.render(context)))
 
 def oneeventer(request, eventernr):
-  print(request.user)
   if access.check('E', eventernr, request.user, 'R'):
     myeventerline = eventer.objects.get(id=eventernr)
     myeventer = c_base.instances['E'][eventernr]

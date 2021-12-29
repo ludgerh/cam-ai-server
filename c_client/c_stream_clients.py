@@ -19,7 +19,7 @@ class c_stream_dict(dict):
     while True:
       message = s.recv(4)
       if message == b'':
-        sleep(0.01)
+        sleep(djconf.getconfigfloat('short_brake', 0.01))
       else:
         if message == b'Done':
           break
