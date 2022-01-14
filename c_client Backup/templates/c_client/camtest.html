@@ -1,0 +1,90 @@
+{% extends 'main/basis.html' %}
+{% block content %}
+{% if debug %}
+{% load static %}
+	<link rel="stylesheet" href="{% static 'git/c_client/c_client.css' %}">
+{% else %}
+	<link rel="stylesheet" href="https://static.cam-ai.de/c_client/c_client.css">
+{% endif %}
+
+<div class="container-fluid float-left">
+	<div class="row">
+		<div class="col-auto">
+			<h3>Camera-Test</h3>
+			<h3><form action="/c_client/camtest/" method="post" autocomplete="off">
+					{% csrf_token %}
+					{% spaceless %}
+					{% for field in form %}
+						{{ field.errors }}
+						{{ field.label_tag }}
+            {% ifequal field.id_for_label "id_url" %}
+						  <input type="text"  id="url"  name="url" list="urllist" value="{{ url }}" class="urldl"/>
+            {% else %}
+              {{ field }}
+            {% endifequal %}
+						{% if field.help_text %}
+						<p class="help">{{ field.help_text|safe }}</p>
+						{% endif %}
+					{% endfor %}
+					{% endspaceless %}
+					<input type="submit" value="Check">
+			</form></h3>
+			<datalist id="urllist">
+			{% spaceless %}
+				{% for item in cams %}
+          {% ifequal item.feed_type 1 %}
+				    <option value="{{ item.url_img }}">{{ item.name }}</option> 
+          {% else %}
+				    <option value="{{ item.url_vid }}">{{ item.name }}</option> 
+          {% endifequal %}
+				{% endfor %}
+			{% endspaceless %}
+			</datalist>
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-auto">
+			<div id="spaceforcanvas"></div>
+		</div>
+	</div>
+</div>
+
+<script >
+
+let ws_scheme = window.location.protocol == "https:" ? "wss:" : "ws:";
+let trigger_Socket;
+let c_view_Socket;
+let oneitemSocket;
+let r_array = {};
+
+$(document).ready(function() {
+	WSAsync(ws_scheme+'//'+window.location.host+'/ws/trigger/')
+	.then((result) => {
+		trigger_Socket = result;
+		trigger_Socket.socket.onclose = function(e) {
+			console.log('Trigger-Socket closed');
+		};
+		trigger_Socket.socket.onmessage = function(e) {
+			if ((e.data[0] == 'T') 
+					&& (typeof timedRefresh{{ v_index }} === "function")) {
+				timedRefresh{{ v_index }}();
+			};
+		};
+		return(WSAsync(ws_scheme+'//'+window.location.host+'/ws/c_view/'));
+	})
+	.then((result) => {
+		c_view_Socket = result;
+		if ({{ v_index }} > 0) {
+			$.get('/c_client/c_canvas/{{ v_index }}/X/0/', ((data ) => {
+				$('#spaceforcanvas').html(data);
+			}));
+		};
+	})
+	.catch(err => {console.log(err);});
+
+});
+	
+</script>
+
+{% endblock %}
+

@@ -22,7 +22,7 @@ class c_access():
     self.checklist = list(access_control.objects.all())
 
   def check(self, type, id, user, mode):
-    if user.id is None:
+    if (user is None) or (user.id is None):
       userid = -1
     else:
       userid = user.id

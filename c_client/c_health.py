@@ -14,10 +14,11 @@
 
 from concurrent import futures
 from time import sleep
+from traceback import format_exc
 import psutil
 from .c_tools import run_with_log, djconf
 from .c_base import c_base
-from .c_tfworker import tfworker
+from .c_tfconfig import tf_workers
 
 def displaystring(numberin):
   stringout = 'B'
@@ -37,40 +38,48 @@ def displaystring(numberin):
   return(str(round(result, 3))+stringout)
 
 def run(logger):
-  if not djconf.getconfigbool('show_health', True):
-    return()
-  while True:
-    logstring = 'Health Status:'
-    logger.info(logstring)
-    logstring = ('Total Memory: ' + displaystring(psutil.virtual_memory().total))
-    logstring += (' Used Memory: ' + displaystring(psutil.virtual_memory().used))
-    logstring += (' ' + str(psutil.virtual_memory().percent) + '% --')
-    logstring += (' Total Swap: ' + displaystring(psutil.swap_memory().total))
-    logstring += (' Used Swap: ' + displaystring(psutil.swap_memory().used))
-    logstring += (' ' + str(psutil.swap_memory().percent) + '%')
-    logger.info(logstring)
-    logstring = str(psutil.cpu_count())
-    logstring += (' CPUs Usage: ' + str(psutil.cpu_percent()) + '% --')
-    logstring += (' CPU Freq: ' + str(round(psutil.cpu_freq().current, 1)))
-    logstring += (' Freq Max: ' + str(psutil.cpu_freq().max))
-    logger.info(logstring)
-    inqueuetotal = 0
-    outqueuetotal = 0
-    for user in tfworker.users.copy():
-      inqueuetotal += tfworker.users[user].fifoin.qsize()
-      outqueuetotal += tfworker.users[user].fifoout.qsize()
-    logstring = str(len(tfworker.users)) + ' TFW-Users: '
-    logstring += (' InQueue Total: ' + str(inqueuetotal))
-    logstring += (' OutQueue Total: ' + str(outqueuetotal))
-    logger.info(logstring)
-    viewqueuetotal = 0
-    for view in c_base.instances['E'].copy():
-      viewqueuetotal += len(c_base.instances['E'][view].frameslist)
-    logstring = str(len(c_base.instances['E'])) + ' Cached Views: '
-    logstring += (' ViewQueue Total: ' + str(viewqueuetotal))
-    logger.info(logstring)
+  try:
+    if not djconf.getconfigbool('show_health', True):
+      return()
+    while True:
+      logstring = 'Health Status:'
+      logger.info(logstring)
+      logstring = ('Total Memory: ' + displaystring(psutil.virtual_memory().total))
+      logstring += (' Used Memory: ' + displaystring(psutil.virtual_memory().used))
+      logstring += (' ' + str(psutil.virtual_memory().percent) + '% --')
+      logstring += (' Total Swap: ' + displaystring(psutil.swap_memory().total))
+      logstring += (' Used Swap: ' + displaystring(psutil.swap_memory().used))
+      logstring += (' ' + str(psutil.swap_memory().percent) + '%')
+      logger.info(logstring)
+      logstring = str(psutil.cpu_count())
+      logstring += (' CPUs Usage: ' + str(psutil.cpu_percent()) + '% --')
+      logstring += (' CPU Freq: ' + str(round(psutil.cpu_freq().current, 1)))
+      logstring += (' Freq Max: ' + str(psutil.cpu_freq().max))
+      logger.info(logstring)
+      inqueuetotal = 0
+      outqueuetotal = 0
+      usertotal = 0
+      for i in tf_workers.values():
+        inqueuetotal += i.inqueue.qsize()
+        for q in i.outqueues.values():
+          outqueuetotal += q.qsize()
+        usertotal += i.number_of_users
+      logstring = str(usertotal) + ' TFW-Users: '
+      logstring += (' InQueue Total: ' + str(inqueuetotal))
+      logstring += (' OutQueue Total: ' + str(outqueuetotal))
+      logger.info(logstring)
+      viewqueuetotal = 0
+      for view in c_base.instances['E'].copy():
+        if c_base.instances['E'][view].frameslist_present:
+          viewqueuetotal += len(c_base.instances['E'][view].frameslist)
+      logstring = str(len(c_base.instances['E'])) + ' Cached Views: '
+      logstring += (' ViewQueue Total: ' + str(viewqueuetotal))
+      logger.info(logstring)
 
-    sleep(5)
+      sleep(5)
+  except:
+    logger.error(format_exc())
+    logger.handlers.clear()
 
 executor = futures.ThreadPoolExecutor(max_workers=1)
 run_with_log(executor, run, 'health')

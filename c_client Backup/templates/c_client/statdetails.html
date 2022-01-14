@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<head>
+	<meta charset="UTF-8" />
+	<meta http-equiv="Cache-Control" content="no-cache" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+	<title>CAM-AI Details of Fit #{{ fitnr }}</title>
+	{% if debug %}
+	{% load static %}
+	<link rel="stylesheet" href="{% static 'git/c_client/camai.css' %}">
+  <link rel="shortcut icon" href="{% static 'git/assets/images/favicon.ico' type='image/x-icon' %}">
+	{% else %}
+	<link rel="stylesheet" href="https://static.cam-ai.de/c_client/camai.css">
+	{% endif %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.min.js"></script>
+</head>
+<body>
+<main>
+
+
+
+<canvas id="epochs" width="800" height="500"></canvas>
+<script>
+var lineChartData = {
+	labels: [
+	{% for epoch in epochs %}
+		'{{ epoch.id }}',
+	{% endfor %}
+	],
+	datasets: [{
+		label: 'val_loss',
+		borderColor: 'rgba(255, 0, 0, 0.8)',
+		fill: false,
+		data: [
+		{% for epoch in epochs %}
+			'{{ epoch.val_loss }}',
+		{% endfor %}
+		],
+		yAxisID: 'y-axis-1',
+	}, {
+		label: 'val_cmetrics',
+		borderColor: 'rgba(0, 255, 0, 0.8)',
+		fill: false,
+		data: [
+		{% for epoch in epochs %}
+			'{{ epoch.val_cmetrics }}',
+		{% endfor %}
+		],
+		yAxisID: 'y-axis-2'
+	}, {
+		label: 'loss',
+		borderColor: 'rgba(255, 0, 0, 0.5)',
+		fill: false,
+		data: [
+		{% for epoch in epochs %}
+			'{{ epoch.loss }}',
+		{% endfor %}
+		],
+		yAxisID: 'y-axis-1',
+	}, {
+		label: 'cmetrics',
+		borderColor: 'rgba(0, 255, 0, 0.5)',
+		fill: false,
+		data: [
+		{% for epoch in epochs %}
+			'{{ epoch.cmetrics }}',
+		{% endfor %}
+		],
+		yAxisID: 'y-axis-2'
+	}]
+};
+
+var ctx = document.getElementById('epochs').getContext('2d');
+window.myLine = Chart.Line(ctx, {
+	data: lineChartData,
+	options: {
+		elements: { point: { radius: 0 } },
+    legend: { labels: { fontColor: 'white' }},
+		responsive: false,
+		hoverMode: 'index',
+		stacked: false,
+		scales: {
+			yAxes: [{
+				ticks: {
+						fontColor: 'white'
+				},
+				type: 'linear', // only linear but allow scale type registration. This allows extensions to exist solely for log scale for instance
+				display: true,
+				position: 'left',
+				id: 'y-axis-1',
+			}, {
+				ticks: {
+						fontColor: 'white'
+				},
+				type: 'linear', // only linear but allow scale type registration. This allows extensions to exist solely for log scale for instance
+				display: true,
+				position: 'right',
+				id: 'y-axis-2',
+
+				// grid line settings
+				gridLines: {
+					drawOnChartArea: false, // only want the grid lines for one axis to show up
+				},
+			}],
+			xAxes: [{
+				ticks: {
+					fontColor: 'white'
+				},
+			}],
+		}
+	}
+});
+</script>
+<br>
+{% for line in description %}
+{{ line }}<br>
+{% endfor %}
+
+
+</main>
+</body>
+</html>

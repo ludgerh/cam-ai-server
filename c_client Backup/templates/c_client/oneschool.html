@@ -1,0 +1,303 @@
+{% extends 'main/basis.html' %}
+{% block content %}
+{% if debug %}
+{% load static %}
+	<link rel="stylesheet" href="{% static 'git/c_client/c_client.css' %}">
+{% else %}
+	<link rel="stylesheet" href="https://static.cam-ai.de/c_client/c_client.css">
+{% endif %}
+<table>
+  <tr>
+    <td>
+      <div class="h1">CAM-AI School</div>
+      <div class="h1">User: {{ user.first_name }} / {{ user.id }}</div>
+			{% if user.is_staff %}
+			<div class="h1">Counter: {{ userinfo.counter }}</div>
+			{% endif %}
+			<div class="h1">
+        School: {{ c_school.name }} / {{ c_school.id }}</div>
+			<div class="h1">New Events: {{ events|length }}</div>
+    </td>
+  </tr>
+</table>
+<table id="eventlines">
+      <tr><td><div class="h4">ID</div></td><td><div class="h4">Tags</div></td>
+			<td><div class="h4">Start</div></td><td><div class="h4">End</div></td>
+			<td><div class="h4">XMin</div></td><td><div class="h4">XMax</div></td>
+			<td><div class="h4">YMin</div></td><td><div class="h4">YMax</div></td>
+			<td><div class="h4">noF</div></td><td></td></tr>
+			{% for item in events %}
+				<tr class="h4">
+				<td>{{ item.id }}</td>
+				<td>{{ item.p_string }}</td>
+				<td>{{ item.start|date:'d.m.Y H:i' }}</td>
+				<td>{{ item.end|date:'d.m.Y H:i' }}</td>
+				<td>{{ item.xmin }}</td>
+				<td>{{ item.xmax }}</td>
+				<td>{{ item.ymin }}</td>
+				<td>{{ item.ymax }}</td>
+				<td>{{ item.numframes }}</td>
+				<td><div tria="0" data-idx={{ item.id }} class="pointer">▼</div></td>
+				</tr><tr><td colspan="12" class="imageline"><span></span><span 
+          id="tr{{ item.id }}"></span></td></tr>
+			{% endfor %}
+</table>
+<script>
+
+let taglines;
+let TrDBUtilSocket;
+let ScDBUtilSocket;
+let ws_scheme = window.location.protocol == "https:" ? "wss:" : "ws:";
+
+$('[tria]').click(function(evt) {
+	let nexttria = $(evt.target).parents('tr').next().next().children().last()
+    .children('div');
+	let frame_id = $(evt.target).data("idx");
+	let framelines;
+	ScDBUtilSocket.sendandwait({
+		'command' : 'getschoolframes',
+		'event' : frame_id,
+    'dolock' : '1',
+	})
+	.then((result) => {
+		let indices = [];
+    if (result === 'Locked') {
+      nexttria.click();
+    };
+		framelines = JSON.parse(result);
+		let returnline = '<table><tr>';
+		for (let j=0; j<framelines.length; j++) {
+			returnline += '<td id="td'+framelines[j].pk+'">';
+			returnline += '<a href="'
+			returnline += window.location.protocol + '//' +  window.location.host;
+			returnline += '/c_client/getbmp/0/';
+			returnline += framelines[j].fields.name.replace(/\//g,'$')+'/';
+			returnline += '" target="_blank">'
+			returnline += '<img src="'
+			returnline += window.location.protocol + '//' +  window.location.host;
+			returnline += '/c_client/getbmp/0/';
+			returnline += framelines[j].fields.name.replace(/\//g,'$')+'/';
+			returnline += '" class="images"</a><br>';
+			returnline += '</td>'
+			if (j%8 == 7) {
+				returnline += '</tr><tr>';
+			};
+			indices.push(framelines[j].pk);
+		};
+		returnline += '</tr></table>';
+		$(evt.target).parent().parent().next().children().children().first()
+      .html(returnline);
+		return(TrDBUtilSocket.sendandwait({
+			'command' : 'getpredictions',
+			'idxs' : indices,
+			'school' : {{ c_school.id }},
+      'is_school' : true,
+		}))
+	})
+	.then((predictions) => {
+		for (let j=0; j<framelines.length; j++) {
+			returnline = '<div class="imagebox">';
+			checkboxes = [];
+			for (let k=0; k<taglines.length; k++) {
+				if (predictions[j][k] >= 0.5) {
+					checkboxes.push(1);
+				} else {
+					checkboxes.push(0);
+				};
+			};
+			checkboxes = JSON.stringify(checkboxes)
+			returnline = '<div data-cb='+checkboxes+' class="imagebox h4">';
+			for (let k=0; k<taglines.length; k++) {
+{% if may_write %}
+				returnline += '<input type="checkbox" data-k="'+k+'"';
+				if (predictions[j][k] >= 0.5) {
+					returnline += ' checked>';
+				} else {
+					returnline += '>';
+				};
+{% endif %}
+				returnline += '<span> '+taglines[k].substr(0,3)+': ';
+				returnline += Math.round(predictions[j][k]*10000)
+						/10000+'</span><br>';
+			};
+			returnline += '</div></td>';
+			$('#td'+framelines[j].pk).append(returnline);
+      let imagebox = $('#td'+framelines[j].pk).children('.imagebox');
+{% if may_write %}
+			imagebox.children('input:checkbox').change(function(evt) {
+        let k = $(evt.target).data('k');
+        if ($(evt.target).prop('checked')) {
+          if (predictions[j][k] >= 0.5) {
+            $(evt.target).next().removeClass('blue');
+          } else {
+            $(evt.target).next().addClass('blue');
+          };
+        } else {
+          if (predictions[j][k] >= 0.5) {
+            $(evt.target).next().addClass('blue');
+          } else {
+            $(evt.target).next().removeClass('blue');
+          };
+        };
+      });
+{% endif %}
+		};
+
+		returnline = '<tr class="h4"><td colspan="8" ';
+{% if may_write %}
+		returnline += 'class="eventinput">{{ may_write }}Who / what is this?<br>';
+		returnline += '<select id="select'+frame_id+'" class="btn btn-primary">';
+		returnline += '<option value="0">Choose...</option>';
+		for (let j=1; j<taglines.length; j++) {
+			returnline += '<option value="'+(j)+'">'
+				+taglines[j]+'</option>';
+		};
+		returnline += '</select>&nbsp;&nbsp;&nbsp;';
+		returnline += '<input type="button" class="btn btn-primary" id="d_button'
+      +frame_id+'" value="Day"></input>&nbsp;&nbsp;&nbsp;';
+		returnline += '<input type="button" class="btn btn-primary" id="n_button'
+      +frame_id+'" value="Night"></input>&nbsp;&nbsp;&nbsp;';
+		returnline += '<input type="button" class="btn btn-primary" id="dc_button'
+      +frame_id+'" value="Day Clean"></input>&nbsp;&nbsp;&nbsp;';
+		returnline += '<input type="button" class="btn btn-primary" id="nc_button'
+      +frame_id+'" value="Night Clean"></input>&nbsp;&nbsp;&nbsp;';
+		returnline += '<input type="button" class="btn btn-primary" id="button'
+      +frame_id+'" value="Submit"></input></td></tr><tr><td></td></tr><tr>'
+      +'<td></td></tr><tr><td>';
+{% endif %}
+    returnline += '</td></tr>';
+		$('#tr'+frame_id).html(returnline);
+		$('#select'+frame_id).change(function(evt) {
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td')
+        .children('div');
+			if ($(evt.target).val() > 0) {
+				targets.children('input:checkbox:not([data-k=0])')
+          .prop('checked', false);
+				targets.children('[data-k="'+(parseInt($(evt.target).val()))+'"]')
+          .prop('checked', true);
+        targets.children().trigger("change");
+			}
+		});
+		$('#d_button'+frame_id).click(function(evt) {
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td')
+        .children('div');
+			$(evt.target).addClass('btn-success');
+			setTimeout(function() {
+			$(evt.target).removeClass('btn-success');
+			}, 1000);
+			targets.children('[data-k=0]').prop("checked", false);
+      targets.children().trigger("change");
+		});
+		$('#n_button'+frame_id).click(function(evt) {
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td')
+        .children('div');
+			$(evt.target).addClass('btn-success');
+			setTimeout(function() {
+				$(evt.target).removeClass('btn-success');
+			}, 1000);
+			targets.children('[data-k=0]').prop("checked", true);
+      targets.children().trigger("change");
+		});
+		$('#dc_button'+frame_id).click(function(evt) {
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td')
+        .children('div');
+			$(evt.target).addClass('btn-success');
+			setTimeout(function() {
+				$(evt.target).removeClass('btn-success');
+			}, 1000);
+			targets.children('input:checkbox').prop('checked', false);
+      targets.children().trigger("change");
+		});
+		$('#nc_button'+frame_id).click(function(evt) {
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td')
+        .children('div');
+			$(evt.target).addClass('btn-success');
+			setTimeout(function() {
+				$(evt.target).removeClass('btn-success');
+			}, 1000);
+			targets.children('input:checkbox').prop('checked', false);
+			targets.children('[data-k=0]').prop("checked", true);
+      targets.children().trigger("change");
+		});
+		$('#button'+frame_id).click(function(evt) {
+			cblist = [];
+			targets = $(evt.target).parents('.imageline').children().first()
+        .children('table').children('tbody').children('tr').children('td');
+			targets.each( function (i, v) {
+				let checkboxes = [];
+				$(v).children('div').children('input:checkbox')
+            .each( function (ii, vv) {
+					if ($(vv).prop('checked')) {
+						checkboxes.push(1);
+					} else {
+						checkboxes.push(0);
+					};
+				});
+				cblist.push(checkboxes);
+			});
+			ScDBUtilSocket.sendandwait({
+				'command' : 'settags',
+				'event' : frame_id,
+				'cblist' : cblist,
+			})
+			.then((result) => {
+				if (result === 'OK') {
+					if($(evt.target).hasClass('btn-success')) {
+						$(evt.target).removeClass('btn-success');
+						setTimeout(function() {
+							$(evt.target).addClass('btn-success');
+						}, 1000);
+					} else {
+						$(evt.target).addClass('btn-success');
+					};
+				}
+				nexttria.click();
+			})
+			.catch(err => {console.log(err);});
+		});
+	})
+	.catch(err => {console.log(err.code);});
+});
+
+$(document).ready(function () {
+	WSAsync(
+		  ws_scheme + '//'
+		  + window.location.host
+		  + '/ws/trdbutil/'
+	)
+	.then((result) => {
+		TrDBUtilSocket = result;
+		return(TrDBUtilSocket.sendandwait({
+			'command' : 'register_ai',
+		}));
+  })
+	.then(() => {
+		return(WSAsync(
+				ws_scheme + '//'
+				+ window.location.host
+				+ '/ws/scdbutil/'
+		));
+	})
+	.then((result) => {
+		ScDBUtilSocket = result;
+		return (TrDBUtilSocket.sendandwait({
+			'command' : 'gettags',
+			'school' : {{ c_school.id }},
+		}));
+	})
+	.then((result) => {
+		taglines = result;
+		$('[tria]').first().click();
+	})
+	.catch(err => {console.log(err);});
+	
+});
+
+</script>
+
+{% endblock %}

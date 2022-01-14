@@ -30,37 +30,31 @@ from django.db.utils import OperationalError
 from .models import event, event_frame, school
 from .l_tools import ts2filename, uniquename, randomfilter, np_mov_avg
 from .c_tools import djconf, classes_list
-from .c_tfworker import tfworker
+from .c_tfworker import tf_worker
 
 e = futures.ThreadPoolExecutor(max_workers=1000)
 
 class c_event(list):
 
-  def __init__(self):
+  def __init__(self, tf_worker, tf_w_index, frame, margin, xmax, ymax, classes_list, school, logger):
     super().__init__()
+    self.tf_worker = tf_worker
+    self.tf_w_index = tf_w_index
     self.frames_lock = Lock()
     self.pred_max = None
     self.pred_ave = None
-    self.xdim = None
-    self.ydim = None
     self.maxblock = djconf.getconfigint('tfw_maxblock', 8)
     self.number_of_frames = djconf.getconfigint('frames_event', 32)
-    self.get_thread = None
-    self.set_thread = None
     self.isrecording = False
     self.goes_to_school = False
     self.status = 0
     self.nrofcopies = 0
     self.ts = None
     self.savename = ''
-
-    #self.ts1 = 0
-
-  def put_first_frame(self, frame, margin, xmax, ymax, classes_list, school, logger):
     self.school = school
-    self.xdim = tfworker.allmodels[school]['xdim']
-    self.ydim = tfworker.allmodels[school]['ydim']
-    self.tf_w_index = tfworker.register()
+    xytemp = self.tf_worker.get_xy(school, self.tf_w_index)
+    self.xdim = xytemp[0]
+    self.ydim = xytemp[1]
     self.classes_list = classes_list
     self.start = frame[2]
     self.end = frame[2]
@@ -81,65 +75,35 @@ class c_event(list):
       except OperationalError:
         connection.close()
     self.id =  event.objects.latest('id').id
-    if (self.get_thread is None) or (self.get_thread.done()):
-      self.get_thread = e.submit(self.get_pred_thread, self.logger)
+    self.make_predictions()
 
-  def get_pred_thread(self, logger):
-    try:
-      ts1 = time()
-      while True:
-        frames_to_process = list((x for x in self.frames if self.frames[x][2] <= 0.0))
-        if frames_to_process and ((time() - ts1) < 1.0):
-          imglist = np.empty((0, self.xdim, self.ydim, 3), np.uint8)
-          for i in frames_to_process:
-            with self.frames_lock:  
-              if i in self.frames:
-                self.frames[i][2] = 0.1
-                np_image = cv.resize(self.frames[i][0][1],(self.xdim, self.ydim))
-                np_image = np.expand_dims(np_image, axis=0)
-                imglist = np.append(imglist, np_image, 0)
-          if self.tf_w_index is not None:
-            if tfworker.users[self.tf_w_index].fifoin_put([self.school, (imglist, frames_to_process)]):
-              if (self.set_thread is None) or self.set_thread.done():
-                self.set_thread = e.submit(self.set_pred_thread, self.logger)
-            else:
-              with self.frames_lock:  
-                if i in self.frames:
-                  del self.frames[i]
-        else:       
-          break
-    except:
-      logger.error(format_exc())
-      logger.handlers.clear()
+  def make_predictions(self):
+    ts1 = time()
+    while True:
+      frames_to_process = list((x for x in self.frames if self.frames[x][2] <= 0.0))
+      if frames_to_process and ((time() - ts1) < 1.0):
+        imglist = np.empty((0, self.xdim, self.ydim, 3), np.uint8)
+        for i in frames_to_process:
+          with self.frames_lock:  
+            if i in self.frames:
+              self.frames[i][2] = 0.1
+              np_image = cv.resize(self.frames[i][0][1],(self.xdim, self.ydim))
+              np_image = np.expand_dims(np_image, axis=0)
+              imglist = np.append(imglist, np_image, 0)
+        if self.tf_w_index is not None:
+          self.tf_worker.inqueue.put(('imglist', self.school, imglist, frames_to_process, self.tf_w_index, self.id))
+      else:       
+        break
 
-  def set_pred_thread(self, logger):
-    try:
-      waiting = True
-      while True:
-        if ((not waiting) and (self.tf_w_index is not None) 
-            and tfworker.users[self.tf_w_index].fifoout.empty()):
-          break
-        else:
-          if (self.tf_w_index is None):
-            sleep(djconf.getconfigfloat('short_brake', 0.01))
-          else:
-            #ts2 = time()
-            #print('TS2:', ts2 - self.ts1)
-            newpredictions = tfworker.users[self.tf_w_index].fifoout_get(block=True)
-            #ts3 = time()
-            #print('TS3:', ts3 - ts2)
-            for i in range(newpredictions[0].shape[0]):
-              with self.frames_lock:
-                if newpredictions[1][i] in self.frames:
-                  self.frames[newpredictions[1][i]][1] = newpredictions[0][i]
-                  self.frames[newpredictions[1][i]][2] = np.max(newpredictions[0][i][1:])
-            #ts4 = time()
-            #print('TS4:', ts4 - ts3)
-            #self.ts1 = time()
-          waiting = False
-    except:
-      logger.error(format_exc())
-      logger.handlers.clear()
+  def set_pred(self, frame, predictions):
+    if (self.tf_w_index is None):
+      sleep(djconf.getconfigfloat('short_brake', 0.01))
+    else:
+      for i in range(predictions.shape[0]):
+        with self.frames_lock:
+          if frame[i] in self.frames:
+            self.frames[frame[i]][1] = predictions[i]
+            self.frames[frame[i]][2] = np.max(predictions[i][1:])
 
   def add_frame(self, frame):
     index = (round(frame[2] * 10000000.0) % 36000000000)
@@ -149,8 +113,7 @@ class c_event(list):
       with self.frames_lock:
         if todelete in self.frames:
           del self.frames[choice(list(self.frames.keys()))] 
-    if (self.get_thread is None) or (self.get_thread.done()):
-      self.get_thread = e.submit(self.get_pred_thread, self.logger)
+    self.make_predictions()
 
   def merge_frames(self, the_other_one):
     with self.frames_lock:
@@ -280,8 +243,4 @@ class c_event(list):
           djconf.getconfig('smtp_password'))
         server.sendmail(djconf.getconfig('smtp_email'), 
           receiver, message.as_string())
-
-  def unregister(self):
-    tfworker.unregister(self.tf_w_index)
-    self.tf_w_index = None
 

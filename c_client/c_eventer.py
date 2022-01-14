@@ -15,6 +15,7 @@ from time import time, sleep
 from shutil import copyfile
 from os import remove
 from subprocess import run
+from threading import Thread
 from collections import deque
 import cv2 as cv
 import ffmpeg
@@ -26,6 +27,7 @@ from django.db import connection
 from .models import eventer, evt_condition, event
 from .c_tools import hasoverlap, rect_btoa, djconf
 from .c_buffer import c_buffer
+from .c_tfconfig import tf_workers
 from .c_device import c_device
 from .c_event import c_event
 from .c_alarm import alarm
@@ -35,10 +37,13 @@ class c_eventer(c_device):
 
   def __init__(self, id=None):
     self.modelclass = eventer
+    self.frameslist_present = False
     super().__init__(id, type='E')
-    self.detectbuffer = c_buffer(getall=True)
+    self.tf_worker = tf_workers[0]
     self.eventdict = {}
-    self.eventcount = 0
+    self.tf_w_index = self.tf_worker.register(self.eventdict)
+    self.tf_worker.run_out(0, self.tf_w_index)
+    self.detectbuffer = c_buffer(getall=True)
     self.nr_of_cond_ed = 0
     self.last_cond_ed = 0
     self.inserter_ts = 0
@@ -47,10 +52,20 @@ class c_eventer(c_device):
     self.classes_list=[item.name for item in get_taglist(self.params['school'])]
     self.cachedict = {}
     self.frameslist = deque()
+    self.frameslist_present = True
     self.display_busy = False
     self.check_busy = False
     self.display_ts = 0
     self.buffer_ts = time()
+
+  def run(self, logger):
+    self.logger = logger
+    self.vid_str_dict = {}
+    multitimer.MultiTimer(interval=0.5, function=self.check_events, 
+      runonstart=False).start()
+    multitimer.MultiTimer(interval=0.1, function=self.display_events, 
+      runonstart=False).start()
+    super().run(self.logger)
 
   def merge_events(self):
     while True:
@@ -97,15 +112,6 @@ class c_eventer(c_device):
       self.cond_dict[item.reaction].append(model_to_dict(item))
     self.set_cam_counts()
 
-  def run(self, logger):
-    self.logger = logger
-    self.vid_str_dict = {}
-    multitimer.MultiTimer(interval=0.5, function=self.check_events, 
-      runonstart=False).start()
-    multitimer.MultiTimer(interval=0.1, function=self.display_events, 
-      runonstart=False).start()
-    super().run(self.logger)
-
   def build_strings(self, reaction):
     return([self.build_string(item) for item in self.cond_dict[reaction]])
 
@@ -127,6 +133,8 @@ class c_eventer(c_device):
 
   def inserter(self, logger): 
     while True:
+      while (not self.tf_worker.check_ready(self.tf_w_index)):
+        sleep(djconf.getconfigfloat('long_brake', 1.0))
       while True:
         if ((self.view_count == 0) and (self.data_count == 0) 
             and (self.record_count == 0)):
@@ -146,12 +154,10 @@ class c_eventer(c_device):
           found = self.eventdict[idict]
           break
       if found is None:
-        myevent = c_event()
-        myevent.put_first_frame(frame, self.params['margin'], 
-          self.params['xres']-1, self.params['yres']-1, self.classes_list, 
-          self.params['school'], logger)
-        self.eventdict[self.eventcount] = myevent
-        self.eventcount += 1
+        myevent = c_event(self.tf_worker, self.tf_w_index, frame, 
+          self.params['margin'], self.params['xres']-1, self.params['yres']-1, 
+          self.classes_list, self.params['school'], logger)
+        self.eventdict[myevent.id] = myevent
       else: 
         s_factor = 0.1 # user changeable later: 0.0 -> No Shrinking 1.0 50%
         if (frame[3] - margin) <= found[0]:
@@ -185,24 +191,26 @@ class c_eventer(c_device):
         return()
       self.check_busy = True
       for idict in self.eventdict.copy():
-        if ((self.eventdict[idict].status <= -2) 
-            and (self.eventdict[idict].nrofcopies == 0)): 
-          self.eventdict[idict].unregister()
-          if not (self.eventdict[idict].isrecording 
-              or self.eventdict[idict].goes_to_school): 
-            while True:
-              try:
-                event.objects.filter(id=self.eventdict[idict].id).delete()
-                break
-              except OperationalError:
-                connection.close()
-          del self.eventdict[idict]
+        if self.eventdict[idict].status <= -2:
+          if self.eventdict[idict].nrofcopies == 0: 
+            if not (self.eventdict[idict].isrecording 
+                or self.eventdict[idict].goes_to_school): 
+              while True:
+                try:
+                  event.objects.filter(id=self.eventdict[idict].id).delete()
+                  break
+                except OperationalError:
+                  connection.close()
+            del self.eventdict[idict]
         else:
-          if (((self.eventdict[idict].end < (time() - self.params['event_time_gap'])) 
-            or (self.eventdict[idict].end > (self.eventdict[idict].start + 300.0))) 
-            and (not self.eventdict[idict].ts)):
-            self.eventdict[idict].ts  = self.eventdict[idict].end
-          if self.eventdict[idict].ts and self.eventdict[idict].pred_is_done(ts = self.eventdict[idict].ts):
+          if (((self.eventdict[idict].end < (time() 
+                - self.params['event_time_gap'])) 
+              or (self.eventdict[idict].end > (self.eventdict[idict].start 
+                + 300.0))) 
+              and (not self.eventdict[idict].ts)):
+            self.eventdict[idict].ts = self.eventdict[idict].end
+          if (self.eventdict[idict].ts and 
+            self.eventdict[idict].pred_is_done(ts = self.eventdict[idict].ts)):
             predictions = self.eventdict[idict].pred_read(radius=10, max=1.0)
             self.eventdict[idict].goes_to_school = self.resolve_rules(2, 
               predictions)
@@ -230,20 +238,23 @@ class c_eventer(c_device):
                           <= self.parent.vid_list[i][0]):
                         my_vid_list.append(self.parent.vid_list[i][1])
                         my_vid_str += self.parent.vid_list[i][2]
-                        if self.parent.vid_list[i][0] > self.eventdict[idict].end:
+                        if (self.parent.vid_list[i][0] 
+                            > self.eventdict[idict].end):
                           if (len(self.parent.vid_list) >= (i + 2)):
                             my_vid_list.append(self.parent.vid_list[i+1][1])
                             my_vid_str += self.parent.vid_list[i+1][2]
                           break
                   if my_vid_str in self.vid_str_dict:
-                    self.eventdict[idict].savename = self.vid_str_dict[my_vid_str]
+                    self.eventdict[idict].savename=self.vid_str_dict[my_vid_str]
                     isdouble = True
                   else:
-                    self.eventdict[idict].savename = 'E_'+str(self.eventdict[idict].id).zfill(12)+'.mp4'
-                    savepath = djconf.getconfig('recordingspath')+self.eventdict[idict].savename
+                    self.eventdict[idict].savename = ('E_'
+                      +str(self.eventdict[idict].id).zfill(12)+'.mp4')
+                    savepath = (djconf.getconfig('recordingspath')
+                      +self.eventdict[idict].savename)
                     if len(my_vid_list) == 1: #presently not used
-                      copyfile(djconf.getconfig('recordingspath')+my_vid_list[0], 
-                        savepath)
+                      copyfile(djconf.getconfig('recordingspath')
+                        +my_vid_list[0], savepath)
                     else:
                       tempfilename = (djconf.getconfig('recordingspath') + 'T_'
                         + str(self.eventdict[idict].id).zfill(12)+'.temp')
@@ -270,19 +281,23 @@ class c_eventer(c_device):
                   if not isdouble:
                     run(['ffmpeg', '-ss', '00:15', '-v', 'fatal', '-i', savepath, 
                       '-vframes', '1', '-q:v', '2', savepath[:-4]+'.jpg'])
-                  self.eventdict[idict].status = min(-2, self.eventdict[idict].status)
+                  self.eventdict[idict].status = min(-2, 
+                    self.eventdict[idict].status)
                 else:  
                   self.eventdict[idict].status = -1
               else:
-                self.eventdict[idict].status  = min(-2, self.eventdict[idict].status)
+                self.eventdict[idict].status  = min(-2, 
+                  self.eventdict[idict].status)
             else:
-              self.eventdict[idict].status  = min(-2, self.eventdict[idict].status)
+              self.eventdict[idict].status  = min(-2, 
+                self.eventdict[idict].status)
           if ((self.eventdict[idict].status == -2)
               and (self.eventdict[idict].goes_to_school 
               or self.eventdict[idict].isrecording)):
             self.eventdict[idict].save(self.params['school'], 
               self.id, self.params['name'], 
-              self.eventdict[idict].goes_to_school, self.eventdict[idict].to_email, self.eventdict[idict].savename) 
+              self.eventdict[idict].goes_to_school, 
+              self.eventdict[idict].to_email, self.eventdict[idict].savename) 
       self.check_busy = False  
     except:
       self.logger.error(format_exc())
@@ -304,7 +319,8 @@ class c_eventer(c_device):
         myframeplusevents = self.frameslist.popleft()
         all_done = True
         for item in myframeplusevents['events']:
-          if (item[0] in self.eventdict) and (self.eventdict[item[0]].status >= -2):
+          if ((item[0] in self.eventdict) 
+              and (self.eventdict[item[0]].status >= -2)):
             myevent = self.eventdict[item[0]]
             if (not myevent.pred_is_done(ts=item[1])):
               all_done = False
@@ -338,7 +354,8 @@ class c_eventer(c_device):
                   else:
                     y0 = itemold[2]-190
                   for j in range(10):
-                    cv.putText(newimage, self.classes_list[displaylist[j][0]][:3]
+                    cv.putText(newimage, 
+                      self.classes_list[displaylist[j][0]][:3]
                       +' - '+str(round(displaylist[j][1],2)), 
                       (itemold[0]+2, y0 + j * 20), 
                       cv.FONT_HERSHEY_SIMPLEX, 0.5, colorcode, 2, cv.LINE_AA)
@@ -352,8 +369,8 @@ class c_eventer(c_device):
                         imax = j
                   if self.resolve_rules(1, predictions):
                     cv.rectangle(newimage, rect_btoa(itemold), (255, 0, 0), 5)
-                    cv.putText(newimage, self.classes_list[imax][:3], (itemold[0]+10, 
-                      itemold[2]+30), 
+                    cv.putText(newimage, self.classes_list[imax][:3], 
+                      (itemold[0]+10, itemold[2]+30), 
                       cv.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv.LINE_AA)
                 item.nrofcopies -= 1
           self.put_one((3, newimage, frame[2]))
@@ -368,7 +385,7 @@ class c_eventer(c_device):
 
   def run_one(self, frame):
     if self.view_count > 0:
-      if len(self.frameslist) < 3:
+      if len(self.frameslist) < 100:
         while (self.inserter_ts <= frame[2]) and self.eventdict:
           sleep(djconf.getconfigfloat('short_brake', 0.01))
         frameplusevents = {}

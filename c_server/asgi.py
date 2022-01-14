@@ -1,6 +1,6 @@
 # c_server/asgi.py
 import os
-from django.conf.urls import url
+#from django.conf.urls import url
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "c_server.settings")
 
 from channels.routing import ProtocolTypeRouter, URLRouter

@@ -40,7 +40,6 @@ from .c_detector import c_detector
 from .c_eventer import c_eventer
 from .c_convert import c_convert
 from .c_access import access
-from .c_tfworker import tfworker
 from .c_schools import get_taglist
 from .c_stream_clients import c_stream_dict
 from .c_health import run
@@ -58,11 +57,6 @@ skipinit = False
 if skipinit:
   print('***** Initialization in views.py disabled ! *****')
 else:
-  run_with_log(executor, tfworker.run1, 'tfworker1')
-  run_with_log(executor, tfworker.run2, 'tfworker2')
-
-  while (not tfworker.is_ready):
-    sleep(djconf.getconfigfloat('long_brake', 1.0))
 
   items_to_start = []
   items_to_postinit = []
@@ -344,6 +338,7 @@ def statdetails(request, fitnr):
 
 #@login_required
 def getbmp(request, model, name): #model = 0 --> school
+  #print('***', model, '***')
   if model == 0:
     name = name.replace('$', '/', 2)
     filepath = djconf.getconfig('schoolframespath') + name

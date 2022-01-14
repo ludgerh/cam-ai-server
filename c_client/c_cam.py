@@ -315,6 +315,7 @@ class c_cam(c_device):
     super().run(logger)
 
   def run_one(self, dummy):
+    print('In')
     thistime = time()
     while True:
       if (self.view_count > 0) or (self.data_count > 0) or (self.record_count > 0):
@@ -446,6 +447,8 @@ class c_cam(c_device):
       if self.params['apply_mask'] and (self.mask is not None):
         frame = cv.bitwise_and(frame, self.mask)
       self.wd_ts = thistime
+      print('Out Put')
       return((3, frame, thistime))
     else:
       return(None)
+      print('Out None')

@@ -36,7 +36,7 @@ from c_client.models import trainframe, tag, userinfo, event, event_frame, schoo
 from .c_tools import djconf, classes_list
 from .c_base import c_base
 from .c_view import c_view
-from .c_tfworker import tfworker
+from .c_tfconfig import tf_workers
 from .c_schools import get_taglist
 from .c_access import access
 
@@ -79,14 +79,16 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
           imagepath = djconf.getconfig('schoolframespath')+frame.name
           if imglist is None:
             myevent = event.objects.get(id=frame.event.id)
-            xdim = tfworker.allmodels[myevent.school.id]['xdim']
-            ydim = tfworker.allmodels[myevent.school.id]['ydim']
+            xytemp = self.tf_worker.get_xy(myevent.school.id, self.tf_w_index)
+            xdim = xytemp[0]
+            ydim = xytemp[1]
         else:
           frame = trainframe.objects.get(id=item)
           if imglist is None:
             mymodel = school.objects.get(id=frame.school)
-            xdim = tfworker.allmodels[mymodel.id]['xdim']
-            ydim = tfworker.allmodels[mymodel.id]['ydim']
+            xytemp = self.tf_worker.get_xy(mymodel.id, self.tf_w_index)
+            xdim = xytemp[0]
+            ydim = xytemp[1]
           imagepath = mymodel.dir+frame.name
         if imglist is None:
           imglist = np.empty((0, xdim, ydim, 3), np.uint8)
@@ -125,7 +127,9 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
 
   async def disconnect(self, close_code):
     if self.tf_w_index is not None:
-      tfworker.unregister(self.tf_w_index) 
+      #print('---', self.tf_w_index, '---')
+      self.tf_worker.outqueues[self.tf_w_index].put(('done', ))
+      self.tf_worker.unregister(self.tf_w_index) 
 
   async def receive(self, text_data):
     if settings.DEBUG:
@@ -172,28 +176,24 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
       count = imglist.shape[0] // self.maxblock
       rest = imglist.shape[0] % self.maxblock
       predictions = np.empty((0, len(classes_list)), np.float32)
+      self.tf_worker.outqueues[self.tf_w_index].put(('done', ))
       if count > 0:
         for i in range(count):
           if i == 0:
             myslice = imglist[:self.maxblock]
           else:
             myslice = imglist[(i * self.maxblock):((i+1) * self.maxblock)]
-          while True:
-            if tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice]):
-              break
-            else:
-              sleep(djconf.getconfigfloat('long_brake', 1.0))
-          myoutput = tfworker.users[self.tf_w_index].fifoout_get()[0]
-          predictions = np.append(predictions, myoutput, 0)
+          self.tf_worker.inqueue.put(('imglist', params['school'], myslice, range(myslice.shape[0]), self.tf_w_index, 0))
+          received = self.tf_worker.outqueues[self.tf_w_index].get()
+          if received[0] == 'predictions':
+            predictions = np.append(predictions, received[1], 0)
       if rest > 0:
         myslice = imglist[(count * self.maxblock):]
-        while True:
-          if tfworker.users[self.tf_w_index].fifoin_put([params['school'], myslice]):
-            break
-          else:
-            sleep(djconf.getconfigfloat('long_brake', 1.0))
-        myoutput =  tfworker.users[self.tf_w_index].fifoout_get()[0]
-        predictions = np.append(predictions, myoutput, 0)
+        self.tf_worker.inqueue.put(('imglist', params['school'], myslice, range(myslice.shape[0]), self.tf_w_index, 0))
+        received = self.tf_worker.outqueues[self.tf_w_index].get()
+        if received[0] == 'predictions':
+          predictions = np.append(predictions, received[1], 0)
+      self.tf_worker.run_out(0, self.tf_w_index)
       outlist['data'] = predictions.tolist()
       if settings.DEBUG:
         print('-->', outlist)
@@ -235,7 +235,11 @@ class TrainDBUtilConsumer(AsyncWebsocketConsumer):
       await self.send(json.dumps(outlist))
 
     elif params['command'] == 'register_ai':
-      self.tf_w_index = tfworker.register()
+      self.tf_worker = tf_workers[0]
+      self.eventdict = {}
+      self.tf_w_index = self.tf_worker.register(self.eventdict)
+      #print('***', self.tf_w_index, '***')
+      self.tf_worker.run_out(0, self.tf_w_index)
       outlist['data'] = 'OK'
       if settings.DEBUG:
         print('-->', outlist)
@@ -798,7 +802,10 @@ class repeaterCamConsumer(WebsocketConsumer):
 class predictionsConsumer(WebsocketConsumer):
 
   def connect(self):
-    self.tf_w_index = tfworker.register()
+    self.tf_worker = tf_workers[0]
+    self.eventdict = {}
+    self.tf_w_index = self.tf_worker.register(self.eventdict)
+    self.tf_worker.run_out(0, self.tf_w_index)
     self.accept()
     self.authed = False
     self.permitted_schools = set()
@@ -820,8 +827,9 @@ class predictionsConsumer(WebsocketConsumer):
             self.close()
         self.numberofframes = int.from_bytes(inbytes[4+numberofbytes:8+numberofbytes], byteorder='big')
         self.school = indict['scho']
-        xdim = tfworker.allmodels[self.school]['xdim']
-        ydim = tfworker.allmodels[self.school]['ydim']
+        xytemp = self.tf_worker.get_xy(self.school, self.tf_w_index)
+        xdim = xytemp[0]
+        ydim = xytemp[1]
         self.imglist = np.empty((0, xdim, ydim, 3), np.uint8)
       elif indict['code'] == 'auth':
         self.user = User.objects.get(username=indict['name'])
@@ -835,15 +843,15 @@ class predictionsConsumer(WebsocketConsumer):
       self.imglist = np.vstack((self.imglist, frame))
       self.numberofframes -= 1
       if self.numberofframes == 0:
-        while True:
-          if tfworker.users[self.tf_w_index].fifoin_put([self.school, self.imglist]):
-            break
-          else:
-            sleep(djconf.getconfigfloat('short_brake', 0.01))
-        predictions = tfworker.users[self.tf_w_index].fifoout_get()[0].tolist()
-        self.send(json.dumps(predictions))
+        self.tf_worker.outqueues[self.tf_w_index].put(('done', ))
+        self.tf_worker.inqueue.put(('imglist', self.school, self.imglist, range(self.imglist.shape[0]), self.tf_w_index, 0))
+        received = self.tf_worker.outqueues[self.tf_w_index].get()
+        self.tf_worker.run_out(0, self.tf_w_index)
+        if received[0] == 'predictions':
+          predictions = received[1].tolist()
+          self.send(json.dumps(predictions))
 
   def disconnect(self, close_code):
-    tfworker.unregister(self.tf_w_index)
+    self.tf_worker.unregister(self.tf_w_index)
 
 
